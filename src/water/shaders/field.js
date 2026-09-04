@@ -32,6 +32,7 @@ uniform float uBeat, uBeatPulse, uBeatPhase;
 uniform float uScale, uSpectrumGain, uComplexity, uChaos, uFlow, uSymmetry;
 uniform float uRingRadius, uRingWidth;
 uniform float uEruption, uShock, uAwake;
+uniform float uPace;   // 1.0 = 120 BPM; scales wavelength as well as speed
 uniform float uRadius;
 uniform float uForm[8];
 uniform sampler2D uSpectrum;
@@ -98,6 +99,10 @@ vec3 gerstner(vec2 p, vec2 dir, float lambda, float steep, float amp, float spee
 
 vec3 swell(vec2 p) {
   float e = 0.45 + uAmp * 0.75;
+  // A slow song does not just move slower — it moves in LONGER waves. Scaling
+  // speed alone left a ballad looking like a fast song in slow motion, all the
+  // same choppy detail simply dragging.
+  float lam = mix(1.75, 0.78, clamp(uPace, 0.3, 1.7) / 1.7);
   vec3 s = vec3(0.0);
   // Wavelengths sized to the pool, not to an ocean. At 34 units across a
   // 26-unit arena there was barely one cycle of the largest wave in frame, so
@@ -105,11 +110,11 @@ vec3 swell(vec2 p) {
   // A spectrum, not a single scale: a few long swells carry the shape and the
   // short ones ride on top of them. Only the short ones and the surface looks
   // like sand; only the long ones and it looks like a mound.
-  s += gerstner(p, normalize(vec2( 0.86,  0.51)), 24.0, 0.66, 0.72 * e, 0.52 * uFlow);
-  s += gerstner(p, normalize(vec2(-0.44,  0.90)), 15.0, 0.60, 0.48 * e, 0.74 * uFlow);
-  s += gerstner(p, normalize(vec2( 0.31, -0.95)),  9.0, 0.50, 0.30 * e, 1.02 * uFlow);
-  s += gerstner(p, normalize(vec2(-0.92, -0.39)),  5.5, 0.40, 0.18 * e, 1.38 * uFlow);
-  s += gerstner(p, normalize(vec2( 0.62, -0.78)),  3.2, 0.32, 0.10 * e, 1.80 * uFlow);
+  s += gerstner(p, normalize(vec2( 0.86,  0.51)), 24.0 * lam, 0.66, 0.72 * e, 0.52 * uFlow);
+  s += gerstner(p, normalize(vec2(-0.44,  0.90)), 15.0 * lam, 0.60, 0.48 * e, 0.74 * uFlow);
+  s += gerstner(p, normalize(vec2( 0.31, -0.95)),  9.0 * lam, 0.50, 0.30 * e, 1.02 * uFlow);
+  s += gerstner(p, normalize(vec2(-0.92, -0.39)),  5.5 * lam, 0.40, 0.18 * e, 1.38 * uFlow);
+  s += gerstner(p, normalize(vec2( 0.62, -0.78)),  3.2 * lam, 0.32, 0.10 * e, 1.80 * uFlow);
   return s;
 }
 
@@ -127,7 +132,7 @@ float harmonicSources(vec2 p) {
     float a = (fi / 12.0 + uTonic / 12.0) * TAU;
     vec2 c = vec2(cos(a), sin(a)) * uRingRadius;
     // minor ripples tighter and colder, major broader and calmer
-    float k = mix(1.55, 1.05, uMode * 0.5 + 0.5);
+    float k = mix(1.55, 1.05, uMode * 0.5 + 0.5) * mix(0.55, 1.25, clamp(uPace, 0.3, 1.7) / 1.7);
     h += radiate(p, c, amp * amp, k, 2.3 * uFlow, fi * 1.7);
   }
   return h * 0.78;
@@ -138,7 +143,7 @@ float harmonicSources(vec2 p) {
 float voiceSource(vec2 p) {
   float amp = uVoicePresence * (0.25 + uEffort * 1.25);
   if (amp < 0.02) return 0.0;
-  float k = mix(0.55, 1.45, uVoicePitch);
+  float k = mix(0.55, 1.45, uVoicePitch) * mix(0.6, 1.2, clamp(uPace, 0.3, 1.7) / 1.7);
   float wob = uVibrato * 0.3 * sin(uTime * 5.4);
   float h = radiate(p, vec2(0.0), amp, k + wob, 1.85 * uFlow, 0.0);
   // strain roughens the water it disturbs
@@ -191,7 +196,8 @@ vec3 waveDisplace(vec2 p) {
   h += impulses(p) * 0.85;
 
   // capillary detail — the fine ripples that ride the big ones and catch light
-  float cap = fbm(p * 1.9 + vec2(uTime * 0.5, -uTime * 0.36)) - 0.5;
+  float capT = uTime * mix(0.45, 1.15, clamp(uPace, 0.3, 1.7) / 1.7);
+  float cap = fbm(p * mix(1.1, 2.2, clamp(uPace, 0.3, 1.7) / 1.7) + vec2(capT, -capT * 0.72)) - 0.5;
   h += cap * (0.13 + uHighs * 0.28) * (0.4 + uComplexity * 0.7);
 
   // turbulence when the music turns harsh
@@ -222,6 +228,7 @@ export function createFieldUniforms(THREE, spectrumTexture, chromaTexture, radiu
     uChaos: { value: 0.02 }, uFlow: { value: 0.3 }, uSymmetry: { value: 2 },
     uRingRadius: { value: 9 }, uRingWidth: { value: 6 },
     uEruption: { value: 0 }, uShock: { value: 0 }, uAwake: { value: 0.25 },
+    uPace: { value: 0.75 },
     uHeightRef: { value: 1.0 },
     uRadius: { value: radius },
     uForm: { value: new Float32Array(8) },

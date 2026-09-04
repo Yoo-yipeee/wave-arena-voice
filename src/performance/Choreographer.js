@@ -109,7 +109,7 @@ export class Choreographer {
       forms: new Float32Array(FORM_COUNT),
       eruption: 0, shock: 0, intensity: 0, shake: 0, ringRadius: 9, ringWidth: 7,
       // exposed for the UI
-      section: 'silence', bpm: 0,
+      section: 'silence', bpm: 0, pace: 0.75, smoothness: 0.5,
     };
     this.p.forms[FORM_INDEX.rings] = 0.55;
 
@@ -484,7 +484,13 @@ export class Choreographer {
     // even at the same loudness as a sweet one.
     const harshness = m.harmony ? Math.max(0, -m.harmony.consonance) * m.harmony.tonalness : 0;
     p.chaos += (look.chaos * (1 + buildRamp) + m.highs * 0.12 + harshness * 0.16 - p.chaos) * k;
-    p.flow += (look.flow * (0.8 + m.energyShort * 0.55) - p.flow) * k;
+    // Flow follows the music's PACE, not its volume. Keying it to energy meant
+    // a slow song swept along the moment it grew — the waves outrunning the
+    // music is the fastest way to break the feeling that they belong to it.
+    // Smooth, sustained material is damped further still.
+    const paceFlow = 0.25 + (m.pace || 0.75) * 0.85;
+    const legato = 1 - (m.smoothness || 0.5) * 0.40;
+    p.flow += (look.flow * paceFlow * legato - p.flow) * k;
     p.symmetry += (look.symmetry - p.symmetry) * (1 - Math.exp(-sdt * 0.8));
     p.mist += (look.mist * (0.7 + m.amplitude * 0.6) - p.mist) * (1 - Math.exp(-sdt * 1.1));
     p.spray += (look.spray * (0.4 + m.beatPulse * 1.2) - p.spray) * (1 - Math.exp(-sdt * 3.5));
@@ -537,6 +543,8 @@ export class Choreographer {
       * (1 - Math.exp(-sdt * 2.2));
     p.section = this.section;
     p.bpm = m.bpm;
+    p.pace = m.pace || 0.75;
+    p.smoothness = m.smoothness || 0.5;
     return p;
   }
 }

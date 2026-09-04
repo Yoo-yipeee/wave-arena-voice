@@ -217,6 +217,7 @@ export class WaterArena {
     U.uComplexity.value = perf.complexity;
     U.uChaos.value = perf.chaos;
     U.uFlow.value = perf.flow;
+    U.uPace.value += ((perf.pace || 0.75) - U.uPace.value) * (1 - Math.exp(-dt * 0.6));
     U.uSymmetry.value = perf.symmetry;
     U.uRingRadius.value = perf.ringRadius;
     U.uRingWidth.value = perf.ringWidth;

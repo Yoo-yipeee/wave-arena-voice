@@ -156,9 +156,13 @@ export class HarmonyAnalyser {
     // ---- harmonic change ---------------------------------------------------
     // A chord change is the fast chroma pulling away from its own context.
     const dist = 1 - cosine(this.fast, this.slow);
-    if (dist > 0.30 && this._sinceChange > 0.45 && s.tonalness > 0.25) {
+    // Thresholds set against clean synthetic chords never fired once on real
+    // records: a dense mix keeps fast and slow chroma far more alike than a
+    // pure triad does. Harmonic rhythm is one of the strongest cues for how
+    // fast a song feels, so a dead detector here cost real discrimination.
+    if (dist > 0.16 && this._sinceChange > 0.6 && s.tonalness > 0.15) {
       this._sinceChange = 0;
-      s.change = Math.min(1, dist * 2.2);
+      s.change = Math.min(1, dist * 3.4);
       s.changed = true;
     }
 

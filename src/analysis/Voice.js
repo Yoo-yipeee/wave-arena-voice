@@ -201,7 +201,10 @@ export class VoiceAnalyser {
         if (this._pitchHz === 0) this._pitchHz = med;
         else this._pitchHz += (med - this._pitchHz) * k;
 
-        if (jump > 0.09 && this._sinceOnset > 0.13) {
+        // ~2 semitones and a longer refractory. At 1.1 semitones the residual
+        // jitter in the pitch track registered as notes: 5.6 "sung notes" per
+        // second in a ballad, which made a slow song look busy.
+        if (jump > 0.16 && this._sinceOnset > 0.22) {
           s.onset = true; this._sinceOnset = 0;
           // Vibrato is wobble *within* a held note. Carrying the history across
           // a note change measures the interval instead and pins it at 1.

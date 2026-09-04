@@ -70,12 +70,15 @@ export class MusicAnalyser {
     this.beatDensity = 0;
 
     this.tracker = new BeatTracker();
+    this.eventRate = 1.6;
 
     this.state = {
       amplitude: 0, sub: 0, bass: 0, mids: 0, highs: 0, air: 0,
       kick: 0, snare: 0, hat: 0, beat: 0, beatPulse: 0,
       energy: 0, energyShort: 0, energyLong: 0, rise: 0, flux: 0,
-      bpm: 0, beatPhase: 0, beatConfidence: 0, beatDensity: 0,
+      bpm: 0, beatPhase: 0, beatConfidence: 0, beatDensity: 0, eventRate: 0,
+      pace: 0.75,        // how fast the music FEELS (event rate, not tempo)
+      smoothness: 0.5,   // 0 percussive and clipped .. 1 sustained and legato
       spectrum: this.spectrumSmooth,
       harmony: this.harmony ? this.harmony.state : null,
       voice: this.voice ? this.voice.state : null,
@@ -103,6 +106,7 @@ export class MusicAnalyser {
     this.energyFast = 0; this.energyShort = 0; this.energyLong = 0;
     this.beatDensity = 0;
     this.tracker = new BeatTracker();
+    this.eventRate = 1.6;
     if (this.harmony) this.harmony.reset();
     if (this.voice) this.voice.reset();
     const st = this.state;
@@ -283,6 +287,41 @@ export class MusicAnalyser {
     st.energyLong = this.energyLong;
     st.rise = this.energyShort - this.energyLong;
     st.beatDensity = this.beatDensity;
+    // Pace — how fast the music FEELS, which is not its tempo.
+    //
+    // Gehra Hua and Believer both clock 126 BPM, yet one is a stomp and the
+    // other is slow and tender. Ballads are routinely written at 120-130 and
+    // felt at half that: the backbeat lands once a bar, chords hold for four,
+    // the singer sustains. A metronome cannot see any of that.
+    //
+    // What "slow" actually means is that less happens per second. So pace is
+    // measured from the rate of musical EVENTS — drum hits, sung notes, chord
+    // changes — weighted by how much each one asks you to notice it.
+    // Weighted by what actually discriminates. Measured over both test tracks,
+    // drums fire at nearly the same rate in a ballad as in a stomper (3.6/s vs
+    // 3.3/s) and say almost nothing about pace, while sung notes and chord
+    // changes track it closely.
+    let ev = 0;
+    if (kickOn) ev += 0.08;
+    if (snareOn) ev += 0.05;
+    if (this.voice && this.voice.state.onset) ev += 1.0;
+    if (this.harmony && this.harmony.state.changed) ev += 1.6;
+    this.eventRate += (ev / Math.max(dt, 1e-3) - this.eventRate) * (1 - Math.exp(-dt * 0.3));
+
+    // a genuinely fast tempo still counts for something when events are sparse
+    const bpmHint = this.tracker.confidence > 0.35 && this.tracker.bpm > 40
+      ? clamp01(this.tracker.bpm / 150) * 0.30 : 0.14;
+    const paceTarget = 0.26 + clamp01(this.eventRate / 5.0) * 1.20 + bpmHint;
+    st.pace += (Math.max(0.28, Math.min(1.9, paceTarget)) - st.pace) * (1 - Math.exp(-dt * 0.35));
+
+    // Smoothness: sustained, legato material against clipped, percussive
+    // material. A slow love song is not merely quieter — it is smoother.
+    const smoothTarget = clamp01(1 - this.eventRate / 5.0) * 0.6
+      + clamp01(1 - this.beatDensity / 7) * 0.25
+      + clamp01(1 - fluxAll * 26) * 0.15;
+    st.smoothness += (smoothTarget - st.smoothness) * (1 - Math.exp(-dt * 0.4));
+
+    st.eventRate = this.eventRate;
     st.bpm = this.tracker.bpm;
     st.beatPhase = this.tracker.phase(transportTime);
     st.beatConfidence = this.tracker.confidence;
