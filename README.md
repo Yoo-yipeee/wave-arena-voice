@@ -1,9 +1,14 @@
-# WAVE ARENA — v0
+# WAVE ARENA — VOICE
 
 Turn music into a visual performance. Upload a song, press play, watch a body of
 water perform it.
 
-### ▶ [Play it live](https://yoo-yipeee.github.io/wave-arena/)
+> **This is the vocal-led variant.** The original — tuned for instrumental and
+> tonal material, where it works well — lives at
+> [Yoo-yipeee/wave-arena](https://github.com/Yoo-yipeee/wave-arena).
+>
+> Here the **singer leads**. Melody, vocal effort and phrasing drive the
+> performance, for lyric-driven songs where the voice carries the meaning.
 
 Press **ENTER DEMO** for a built-in track, or drop in an mp3 of your own.
 Nothing is uploaded — the file is decoded and analysed entirely in your browser.
@@ -43,6 +48,8 @@ AudioEngine ──▶ MusicAnalyser ──▶ Choreographer ──▶ WaterArena
 | `audio/AudioEngine.js` | Decode, transport, analyser tap, loudness pre-scan |
 | `audio/DemoTrack.js` | The demo song, rendered sample-by-sample into an AudioBuffer |
 | `analysis/MusicAnalyser.js` | Bands, onsets, spectral flux, BPM → one normalised `musicState` |
+| `analysis/Voice.js` | Finds the lead vocal by mid/side, tracks melody, effort, vibrato, phrasing |
+| `analysis/Harmony.js` | Chroma, key, mode, consonance, chord-change detection |
 | `performance/TrackPlan.js` | Structural read of the whole song: level curve, and where the drops are |
 | `performance/Choreographer.js` | Section machine + morphing performance parameters + wave events |
 | `performance/Primitives.js` | The vocabulary of shapes the water can speak |
@@ -52,6 +59,40 @@ AudioEngine ──▶ MusicAnalyser ──▶ Choreographer ──▶ WaterArena
 | `ui/UI.js` | Every DOM concern; emits intents, never reaches into the engines |
 
 ---
+
+## Why a separate build
+
+Tuned for instrumental music, the arena failed on lyric-driven songs for three
+specific reasons, all fixed here:
+
+1. **The `tonalness` gate fought the very songs it needed to serve.** A loud,
+   distorted, vocal-led master has few clean spectral peaks, so tonalness read
+   low and the harmonic form was suppressed exactly when it mattered. A
+   confident lead vocal is now itself accepted as proof the music is pitched.
+2. **The voice was invisible.** Nothing in the pipeline knew a singer existed.
+3. **Compressed masters flattened the structure read.** A modern rock master
+   sits near full scale throughout, so the RMS curve carries almost no shape.
+
+## Finding the singer without source separation
+
+The lead vocal in almost any pop, rock or hip-hop master is panned dead centre
+while the instruments are spread wide. Building the actual **mid** `(L+R)/2`
+and **side** `(L-R)/2` signals and analysing each separately gives a usable
+vocal estimate — karaoke centre-cancellation, run forwards instead of
+backwards. It must be done in the time domain: an AnalyserNode reports
+magnitudes only, and `|L+R|` cannot be recovered from `|L|` and `|R|` without
+the phase between them.
+
+From the centre-dominant spectrum it derives presence, melody pitch (harmonic
+product spectrum, median filtered), **vocal effort** — a belt is not merely
+louder than a croon, it is brighter, which survives compression — vibrato, and
+phrasing from the breaths between lines.
+
+## Structure when the level meter is useless
+
+`TrackPlan` measures how compressed a master is, and blends in **high-band
+energy** and **stereo width** in proportion. A chorus opens up in the top end
+and widens even when its RMS is identical to the verse.
 
 ## Design decisions worth knowing
 

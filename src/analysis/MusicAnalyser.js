@@ -23,13 +23,15 @@ const BANDS = {
 };
 
 import { HarmonyAnalyser } from './Harmony.js';
+import { VoiceAnalyser } from './Voice.js';
 
 export const SPECTRUM_BINS = 128;
 
 export class MusicAnalyser {
-  constructor(analyserNode, sampleRate, harmonyNode) {
+  constructor(analyserNode, sampleRate, harmonyNode, midNode, sideNode) {
     this.analyser = analyserNode;
     this.harmony = harmonyNode ? new HarmonyAnalyser(harmonyNode, sampleRate) : null;
+    this.voice = (midNode && sideNode) ? new VoiceAnalyser(midNode, sideNode, sampleRate) : null;
     this.sampleRate = sampleRate;
     this.binCount = analyserNode.frequencyBinCount;
     this.freq = new Uint8Array(this.binCount);
@@ -76,6 +78,7 @@ export class MusicAnalyser {
       bpm: 0, beatPhase: 0, beatConfidence: 0, beatDensity: 0,
       spectrum: this.spectrumSmooth,
       harmony: this.harmony ? this.harmony.state : null,
+      voice: this.voice ? this.voice.state : null,
       time: 0, progress: 0, playing: false, silence: 1,
     };
   }
@@ -101,6 +104,7 @@ export class MusicAnalyser {
     this.beatDensity = 0;
     this.tracker = new BeatTracker();
     if (this.harmony) this.harmony.reset();
+    if (this.voice) this.voice.reset();
     const st = this.state;
     st.amplitude = 0; st.sub = 0; st.bass = 0; st.mids = 0; st.highs = 0; st.air = 0;
     st.kick = 0; st.snare = 0; st.hat = 0; st.beat = 0; st.beatPulse = 0;
@@ -136,6 +140,7 @@ export class MusicAnalyser {
       st.silence += (1 - st.silence) * k;
       for (let i = 0; i < SPECTRUM_BINS; i++) this.spectrumSmooth[i] *= Math.exp(-dt * 2.2);
       if (this.harmony) this.harmony.update(dt, false);
+      if (this.voice) this.voice.update(dt, false);
       st.time = transportTime; st.progress = progress; st.playing = false;
       return st;
     }
@@ -143,6 +148,7 @@ export class MusicAnalyser {
     this.analyser.getByteFrequencyData(this.freq);
     this.analyser.getByteTimeDomainData(this.time);
     if (this.harmony) this.harmony.update(dt, true);
+    if (this.voice) this.voice.update(dt, true);
 
     // ---- RMS amplitude from the time domain -------------------------------
     let sum = 0;

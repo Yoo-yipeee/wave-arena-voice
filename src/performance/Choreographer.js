@@ -24,42 +24,42 @@ const LOOKS = {
   silence: {
     height: 0.7, spectrumGain: 0.10, complexity: 0.10, chaos: 0.02, flow: 0.28, symmetry: 2,
     mist: 0.20, spray: 0.0, bloom: 0.55, heat: 0.0, camDist: 40, camHeight: 13.0, fov: 34,
-    forms: { harmonic: 0.25, radial: 0.06, rings: 0.55, towers: 0.0, walls: 0.10, arches: 0.0, columns: 0.0 },
+    forms: { voice: 0.20, harmonic: 0.25, radial: 0.06, rings: 0.55, towers: 0.0, walls: 0.10, arches: 0.0, columns: 0.0 },
   },
   intro: {
     height: 1.1, spectrumGain: 0.30, complexity: 0.24, chaos: 0.05, flow: 0.45, symmetry: 2,
     mist: 0.32, spray: 0.03, bloom: 0.7, heat: 0.05, camDist: 38, camHeight: 12.0, fov: 35,
-    forms: { harmonic: 0.60, radial: 0.16, rings: 0.60, towers: 0.05, walls: 0.18, arches: 0.05, columns: 0.0 },
+    forms: { voice: 0.85, harmonic: 0.60, radial: 0.16, rings: 0.60, towers: 0.05, walls: 0.18, arches: 0.05, columns: 0.0 },
   },
   verse: {
     height: 2.2, spectrumGain: 0.62, complexity: 0.45, chaos: 0.10, flow: 0.7, symmetry: 2,
     mist: 0.40, spray: 0.12, bloom: 0.85, heat: 0.18, camDist: 34, camHeight: 11.0, fov: 37,
-    forms: { harmonic: 0.85, radial: 0.28, rings: 0.50, towers: 0.18, walls: 0.30, arches: 0.10, columns: 0.10 },
+    forms: { voice: 1.15, harmonic: 0.85, radial: 0.28, rings: 0.50, towers: 0.18, walls: 0.30, arches: 0.10, columns: 0.10 },
   },
   build: {
     height: 1.9, spectrumGain: 0.85, complexity: 0.75, chaos: 0.26, flow: 1.05, symmetry: 3,
     mist: 0.60, spray: 0.30, bloom: 1.0, heat: 0.45, camDist: 38, camHeight: 14.5, fov: 39,
-    forms: { harmonic: 0.80, radial: 0.38, rings: 0.40, towers: 0.55, walls: 0.28, arches: 0.20, columns: 0.35 },
+    forms: { voice: 1.00, harmonic: 0.80, radial: 0.38, rings: 0.40, towers: 0.55, walls: 0.28, arches: 0.20, columns: 0.35 },
   },
   drop: {
     height: 2.3, spectrumGain: 1.15, complexity: 0.95, chaos: 0.42, flow: 1.35, symmetry: 4,
     mist: 0.85, spray: 1.0, bloom: 1.35, heat: 1.0, camDist: 43, camHeight: 21.0, fov: 46,
-    forms: { harmonic: 1.00, radial: 0.50, rings: 0.75, towers: 0.9, walls: 0.5, arches: 0.45, columns: 0.6 },
+    forms: { voice: 1.00, harmonic: 1.00, radial: 0.50, rings: 0.75, towers: 0.9, walls: 0.5, arches: 0.45, columns: 0.6 },
   },
   chorus: {
     height: 2.0, spectrumGain: 1.0, complexity: 0.8, chaos: 0.24, flow: 1.15, symmetry: 4,
     mist: 0.70, spray: 0.6, bloom: 1.15, heat: 0.72, camDist: 41, camHeight: 18.0, fov: 41,
-    forms: { harmonic: 1.00, radial: 0.45, rings: 0.6, towers: 0.65, walls: 0.4, arches: 0.6, columns: 0.75 },
+    forms: { voice: 1.25, harmonic: 1.00, radial: 0.45, rings: 0.6, towers: 0.65, walls: 0.4, arches: 0.6, columns: 0.75 },
   },
   break: {
     height: 0.9, spectrumGain: 0.28, complexity: 0.2, chaos: 0.04, flow: 0.4, symmetry: 2,
     mist: 0.34, spray: 0.05, bloom: 0.7, heat: 0.08, camDist: 39, camHeight: 12.0, fov: 34,
-    forms: { harmonic: 0.55, radial: 0.12, rings: 0.6, towers: 0.02, walls: 0.14, arches: 0.05, columns: 0.0 },
+    forms: { voice: 0.70, harmonic: 0.55, radial: 0.12, rings: 0.6, towers: 0.02, walls: 0.14, arches: 0.05, columns: 0.0 },
   },
   outro: {
     height: 1.0, spectrumGain: 0.3, complexity: 0.22, chaos: 0.04, flow: 0.42, symmetry: 2,
     mist: 0.35, spray: 0.05, bloom: 0.72, heat: 0.06, camDist: 41, camHeight: 13.0, fov: 33,
-    forms: { harmonic: 0.50, radial: 0.14, rings: 0.55, towers: 0.02, walls: 0.12, arches: 0.10, columns: 0.0 },
+    forms: { voice: 0.85, harmonic: 0.50, radial: 0.14, rings: 0.55, towers: 0.02, walls: 0.12, arches: 0.10, columns: 0.0 },
   },
 };
 
@@ -68,10 +68,10 @@ const LOOKS = {
  * reads as choreography rather than noise. Each entry is a multiplier set.
  */
 const PHRASE_VARIANTS = [
-  { harmonic: 1.0, radial: 1.0, rings: 1.0, towers: 1.0, walls: 1.0, arches: 1.0, columns: 1.0 },
-  { harmonic: 1.0, radial: 0.8, rings: 1.2, towers: 0.5, walls: 1.5, arches: 0.6, columns: 1.3 },
-  { harmonic: 1.1, radial: 1.15, rings: 0.7, towers: 1.4, walls: 0.5, arches: 1.4, columns: 0.7 },
-  { harmonic: 0.95, radial: 0.9, rings: 1.1, towers: 0.9, walls: 1.2, arches: 0.8, columns: 1.4 },
+  { voice: 1.0, harmonic: 1.0, radial: 1.0, rings: 1.0, towers: 1.0, walls: 1.0, arches: 1.0, columns: 1.0 },
+  { voice: 1.0, harmonic: 1.0, radial: 0.8, rings: 1.2, towers: 0.5, walls: 1.5, arches: 0.6, columns: 1.3 },
+  { voice: 1.0, harmonic: 1.1, radial: 1.15, rings: 0.7, towers: 1.4, walls: 0.5, arches: 1.4, columns: 0.7 },
+  { voice: 1.0, harmonic: 0.95, radial: 0.9, rings: 1.1, towers: 0.9, walls: 1.2, arches: 0.8, columns: 1.4 },
 ];
 
 /** Crest height ceiling, world units — the arena is 26 units across. */
@@ -143,6 +143,7 @@ export class Choreographer {
     this._lastSurgeTime = -999;
     this._toDrop = null;
     this._anticipation = 0;
+    this._voiceSeen = 0;
     this._firedDrop = -1;
     this.events.length = 0;
 
@@ -322,6 +323,10 @@ export class Choreographer {
     }
     // ~35 s half-life: a later, bigger drop can still clear the bar
     this._eMax = Math.max(m.energyShort, this._eMax * Math.exp(-dt * 0.02));
+
+    // Does this track have a singer? Vocal-specific behaviour is scaled by the
+    // answer, so a purely instrumental piece keeps the original feel.
+    if (m.voice) this._voiceSeen = Math.max(this._voiceSeen * 0.9995, m.voice.presence);
     this._jump = this._riseHist.length > 100
       ? m.energyShort - avg(this._riseHist.slice(-96, -60))
       : 0;
@@ -358,6 +363,14 @@ export class Choreographer {
       if (want === 'break' || want === 'silence' || want === 'outro') {
         this.events.push({ type: 'settle' });
       }
+    }
+
+    // A sung phrase arriving is an event. It is a lift, not a strike: broad
+    // and slow, so it reads as the voice entering rather than a drum hit.
+    if (m.voice && m.voice.onset && m.voice.presence > 0.3) {
+      const v = m.voice;
+      this.emit(0, 0, 0.35 + v.effort * 0.9, 5.5, 7.5, 1);
+      this.events.push({ type: 'voice', strength: v.effort * v.presence });
     }
 
     // A chord change is one of the most felt moments in music and used to
@@ -438,9 +451,16 @@ export class Choreographer {
     // Clamped: a track that sits at full scale with no dynamics (a drone, a
     // heavily limited master) otherwise drives this past anything the camera
     // can frame, and the arena becomes a wall.
+    // In a lyric-driven song the singer carries the intensity, and a belt can
+    // land at the same RMS as the verse that preceded it — modern masters are
+    // compressed flat. Vocal effort therefore drives height alongside level,
+    // and the arena eases back in the breath between phrases.
+    const vx = m.voice;
+    const vocalDrive = vx ? vx.presence * (0.3 + vx.effort * 1.0) : 0;
+    const breath = vx ? 1 - vx.gap * 0.22 * this._voiceSeen : 1;
     const wantHeight = Math.min(MAX_HEIGHT,
-      look.height * (0.62 + m.amplitude * 0.62) * (1 + buildRamp * 0.55)
-      + m.bass * 0.85 + this.p.eruption * 1.5);
+      (look.height * (0.6 + Math.max(m.amplitude * 0.62, vocalDrive * 0.78)) * (1 + buildRamp * 0.55)
+       + m.bass * 0.85 + this.p.eruption * 1.5) * breath);
     p.height += (wantHeight - p.height) * k;
     p.spectrumGain += (look.spectrumGain * (0.65 + m.amplitude * 0.7) - p.spectrumGain) * k;
     p.complexity += (look.complexity * (1 + buildRamp * 0.5) + m.highs * 0.25 - p.complexity) * k;
@@ -453,7 +473,9 @@ export class Choreographer {
     p.mist += (look.mist * (0.7 + m.amplitude * 0.6) - p.mist) * (1 - Math.exp(-sdt * 1.1));
     p.spray += (look.spray * (0.4 + m.beatPulse * 1.2) - p.spray) * (1 - Math.exp(-sdt * 3.5));
     p.bloom += (look.bloom * (0.85 + m.amplitude * 0.35) - p.bloom) * (1 - Math.exp(-sdt * 1.6));
-    const wantHeat = Math.min(1.02, look.heat * (0.6 + m.energyShort * 0.8) + this.p.eruption * 0.5);
+    // a belt brightens the water the way it brightens the mix
+    const wantHeat = Math.min(1.02, look.heat * (0.6 + m.energyShort * 0.8)
+      + this.p.eruption * 0.5 + (vx ? vx.presence * vx.effort * 0.28 : 0));
     p.heat += (wantHeat - p.heat) * (1 - Math.exp(-sdt * 2.0));
     // Frame the water we actually have, not the water the section nominally wants.
     const distForHeight = look.camDist * (1 + Math.max(0, p.height - 2.4) * 0.13);
@@ -470,15 +492,22 @@ export class Choreographer {
     // ---- form weights -------------------------------------------------------
     const harm = m.harmony;
     const tonalness = harm ? harm.tonalness : 0;
+    const presence = m.voice ? m.voice.presence : 0;
     const variant = PHRASE_VARIANTS[this.phrase % PHRASE_VARIANTS.length];
     const fk = 1 - Math.exp(-sdt * (this.section === 'drop' ? 4.0 : 1.1));
     for (const name in FORM_INDEX) {
       const idx = FORM_INDEX[name];
       let target = (look.forms[name] || 0) * (variant[name] || 1);
       // Live nudges so forms answer the mix, not just the section label.
-      // Harmony leads while the music is pitched, and steps aside for passages
-      // that are pure percussion or noise, where chroma means nothing.
-      if (name === 'harmonic') target *= 0.35 + tonalness * 1.05;
+      //
+      // Harmony used to be gated on tonalness alone, which backfired badly on
+      // exactly the songs this build is for: a loud, distorted, vocal-led
+      // master has few clean spectral peaks, so tonalness reads low and the
+      // harmonic form was suppressed right when it mattered. A confident lead
+      // vocal is itself proof the music is pitched.
+      const pitched = Math.max(tonalness, presence * 0.9);
+      if (name === 'harmonic') target *= 0.35 + pitched * 1.05;
+      if (name === 'voice') target *= 0.12 + presence * 1.38;
       if (name === 'towers') target *= 0.6 + m.bass * 0.9;
       if (name === 'columns') target *= 0.6 + m.mids * 0.9;
       if (name === 'arches') target *= 0.6 + m.highs * 0.8;

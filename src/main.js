@@ -39,7 +39,7 @@ const idleMusic = {
   energy: 0, energyShort: 0, energyLong: 0, rise: 0, flux: 0,
   bpm: 0, beatPhase: 0, beatConfidence: 0, beatDensity: 0,
   spectrum: new Float32Array(128),
-  harmony: null,
+  harmony: null, voice: null,
   time: 0, progress: 0, playing: false, silence: 1, onset: null,
 };
 
@@ -58,13 +58,17 @@ async function beginTrack(loader, label) {
     return;
   }
 
-  if (!analyser) analyser = new MusicAnalyser(engine.analyser, engine.ctx.sampleRate, engine.harmonyAnalyser);
+  if (!analyser) analyser = new MusicAnalyser(
+    engine.analyser, engine.ctx.sampleRate, engine.harmonyAnalyser,
+    engine.midAnalyser, engine.sideAnalyser,
+  );
 
   // Read the whole track before a single frame is drawn: level envelope for the
   // scrubber, loudness reference for the analyser, structure for the plan.
-  const { peaks, rms, refRms } = computePeaks(engine.buffer);
+  const env = computePeaks(engine.buffer);
+  const { peaks, refRms } = env;
   analyser.resetTrack(refRms);
-  choreo.resetTrack(new TrackPlan(rms, refRms, engine.duration));
+  choreo.resetTrack(new TrackPlan(env, refRms, engine.duration));
 
   ui.hideLoading();
   ui.enterPerformance(engine.title, engine.duration, peaks);
@@ -168,5 +172,6 @@ requestAnimationFrame((t) => { last = t; frame(t); });
 window.WAVE = {
   engine, arena, choreo, stage, camera, ui, THREE,
   get music() { return analyser?.state; },
+  get analyser() { return analyser; },
   get plan() { return choreo.plan?.describe(); },
 };

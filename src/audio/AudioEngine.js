@@ -50,9 +50,40 @@ export class AudioEngine {
     this.harmonyAnalyser.minDecibels = -95;
     this.harmonyAnalyser.maxDecibels = -18;
 
+    // ---- mid / side, for finding the lead vocal ---------------------------
+    // The lead vocal in almost any pop, rock or hip-hop master is panned dead
+    // centre while the instruments are spread wide. Building the actual mid
+    // (L+R)/2 and side (L-R)/2 SIGNALS and analysing each separately gives a
+    // usable vocal estimate. This has to be done in the time domain: an
+    // AnalyserNode reports magnitudes only, and |L+R| cannot be recovered from
+    // |L| and |R| without the phase between them.
+    const splitter = this.ctx.createChannelSplitter(2);
+    const midSum = this.ctx.createGain();
+    const sideSum = this.ctx.createGain();
+    const half = () => { const g = this.ctx.createGain(); g.gain.value = 0.5; return g; };
+    const minusHalf = () => { const g = this.ctx.createGain(); g.gain.value = -0.5; return g; };
+
+    const mL = half(), mR = half(), sL = half(), sR = minusHalf();
+    splitter.connect(mL, 0); splitter.connect(mR, 1);
+    splitter.connect(sL, 0); splitter.connect(sR, 1);
+    mL.connect(midSum); mR.connect(midSum);
+    sL.connect(sideSum); sR.connect(sideSum);
+
+    this.midAnalyser = this.ctx.createAnalyser();
+    this.sideAnalyser = this.ctx.createAnalyser();
+    for (const a of [this.midAnalyser, this.sideAnalyser]) {
+      a.fftSize = 4096;                 // ~11 Hz bins: resolves sung fundamentals
+      a.smoothingTimeConstant = 0.4;    // low, so phrasing stays crisp
+      a.minDecibels = -100;
+      a.maxDecibels = -10;
+    }
+    midSum.connect(this.midAnalyser);
+    sideSum.connect(this.sideAnalyser);
+
     // Tap post-gain so the visual follows what is actually heard.
     this.gain.connect(this.analyser);
     this.gain.connect(this.harmonyAnalyser);
+    this.gain.connect(splitter);
     this.gain.connect(this.ctx.destination);
     return this.ctx;
   }
@@ -179,32 +210,46 @@ export function formatTime(s) {
  * so it normalises near-silence up to full scale.
  */
 export function computePeaks(buffer, bins = 420) {
-  const chans = Math.min(2, buffer.numberOfChannels);
-  const data = buffer.getChannelData(0);
-  const data2 = chans > 1 ? buffer.getChannelData(1) : null;
-  const step = Math.floor(data.length / bins) || 1;
-  const peaks = new Float32Array(bins);
-  let max = 1e-6;
-  for (let i = 0; i < bins; i++) {
-    let sum = 0, cnt = 0;
-    const start = i * step;
-    const end = Math.min(start + step, data.length);
-    // RMS reads better than absolute peak at this scale.
-    for (let j = start; j < end; j += 4) {
-      const v = data2 ? (data[j] + data2[j]) * 0.5 : data[j];
-      sum += v * v; cnt++;
+  const n = buffer.length;
+  const L = buffer.getChannelData(0);
+  const R = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : L;
+  const step = Math.floor(n / bins) || 1;
+
+  const rms = new Float32Array(bins);
+  const width = new Float32Array(bins);
+  const high = new Float32Array(bins);
+
+  // One-pole high-pass (~1.5 kHz) over the mid signal. A modern master is
+  // compressed so hard that its RMS barely moves between a verse and a chorus,
+  // but the top end and the stereo width still open right up — so those carry
+  // the structure that level no longer does.
+  const alpha = 0.824;
+  let hp = 0, prevMid = 0;
+  let bi = 0, cnt = 0, sM = 0, sS = 0, sH = 0;
+  for (let i = 0; i < n; i++) {
+    const mid = (L[i] + R[i]) * 0.5;
+    const side = (L[i] - R[i]) * 0.5;
+    hp = alpha * (hp + mid - prevMid);
+    prevMid = mid;
+    sM += mid * mid; sS += side * side; sH += hp * hp;
+    if (++cnt >= step && bi < bins) {
+      const m = Math.sqrt(sM / cnt), sd = Math.sqrt(sS / cnt);
+      rms[bi] = m;
+      width[bi] = sd / (m + sd + 1e-9);
+      high[bi] = Math.sqrt(sH / cnt);
+      bi++; cnt = 0; sM = 0; sS = 0; sH = 0;
     }
-    const rms = Math.sqrt(sum / Math.max(1, cnt));
-    peaks[i] = rms;
-    if (rms > max) max = rms;
   }
+  for (; bi < bins; bi++) { rms[bi] = rms[bi - 1] || 0; width[bi] = width[bi - 1] || 0; high[bi] = high[bi - 1] || 0; }
+
+  let max = 1e-6;
+  for (let i = 0; i < bins; i++) if (rms[i] > max) max = rms[i];
 
   // 92nd percentile: the track's loud plateau, immune to a single transient.
-  const sorted = Array.from(peaks).sort((a, b) => a - b);
+  const sorted = Array.from(rms).sort((a, b) => a - b);
   const refRms = Math.max(sorted[Math.floor(bins * 0.92)] || max, 0.008);
 
   const shaped = new Float32Array(bins);
-  for (let i = 0; i < bins; i++) shaped[i] = Math.pow(peaks[i] / max, 0.72);
-  // `peaks` = raw RMS for the structural planner, `shaped` = for the scrubber
-  return { peaks: shaped, rms: peaks, refRms };
+  for (let i = 0; i < bins; i++) shaped[i] = Math.pow(rms[i] / max, 0.72);
+  return { peaks: shaped, rms, width, high, refRms };
 }

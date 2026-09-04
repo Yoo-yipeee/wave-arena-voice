@@ -262,6 +262,18 @@ export class WaterArena {
       this.lineReflMat.uniforms.uMid.value.copy(this._tone);
     }
 
+    // ---- voice -------------------------------------------------------------
+    const v = music.voice;
+    if (v) {
+      U.uVoicePresence.value += (v.presence - U.uVoicePresence.value) * (1 - Math.exp(-dt * 7));
+      // the melody ridge glides rather than snaps, or every note is a jolt
+      U.uVoicePitch.value += (v.pitch - U.uVoicePitch.value) * (1 - Math.exp(-dt * 9));
+      U.uEffort.value += (v.effort - U.uEffort.value) * (1 - Math.exp(-dt * 5));
+      U.uVibrato.value += (v.vibrato - U.uVibrato.value) * (1 - Math.exp(-dt * 4));
+      U.uVoicePhrase.value += (v.phrase - U.uVoicePhrase.value) * (1 - Math.exp(-dt * 5));
+      U.uVoiceOnset.value = Math.max(U.uVoiceOnset.value * Math.exp(-dt * 3.2), v.onset ? 1 : 0);
+    }
+
     // spectrum -> texture
     const sp = music.spectrum;
     for (let i = 0; i < SPECTRUM_BINS; i++) {

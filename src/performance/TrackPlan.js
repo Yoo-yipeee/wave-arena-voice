@@ -18,7 +18,8 @@ export class TrackPlan {
    * @param {number} refRms      the track's loud-plateau RMS
    * @param {number} duration    seconds
    */
-  constructor(rms, refRms, duration) {
+  constructor(env, refRms, duration) {
+    const rms = env.rms || env;                 // tolerate a bare array
     const n = rms.length;
     this.n = n;
     this.duration = duration;
@@ -27,6 +28,26 @@ export class TrackPlan {
     // Level: where each moment sits in the track's own dynamic range.
     const raw = new Float32Array(n);
     for (let i = 0; i < n; i++) raw[i] = Math.min(1, Math.pow(rms[i] / refRms, 0.85));
+
+    // How compressed is this master? A wide level curve carries structure on
+    // its own; a flat one does not, and needs help.
+    const sortedRaw = Array.from(raw).sort((a, b) => a - b);
+    const p10 = sortedRaw[Math.floor(n * 0.10)] || 0;
+    const p90 = sortedRaw[Math.floor(n * 0.90)] || 1;
+    this.flatness = clamp01(1 - (p90 - p10) / 0.42);
+
+    if (env.high && env.width && this.flatness > 0.05) {
+      // Top end and stereo width still open up in a chorus even when the level
+      // meter has been squashed flat. Lean on them in proportion to how little
+      // the level curve has left to say.
+      const hi = normalise(env.high), wd = normalise(env.width);
+      const w = this.flatness;
+      for (let i = 0; i < n; i++) {
+        const alt = hi[i] * 0.62 + wd[i] * 0.38;
+        raw[i] = raw[i] * (1 - w * 0.55) + alt * (w * 0.55);
+      }
+    }
+
     this.level = smooth(raw, Math.max(1, Math.round(0.9 / this.binDur)));
 
     // Rise: how much louder than ~2.5 s ago.
@@ -116,9 +137,23 @@ export class TrackPlan {
     return {
       duration: +this.duration.toFixed(1),
       peakLevel: +this.peakLevel.toFixed(2),
+      compression: +this.flatness.toFixed(2),
       drops: this.drops.map(d => +d.toFixed(1)),
     };
   }
+}
+
+function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+
+/** Scale an envelope to 0..1 against its own 5th/95th percentiles. */
+function normalise(a) {
+  const s = Array.from(a).sort((x, y) => x - y);
+  const lo = s[Math.floor(a.length * 0.05)] || 0;
+  const hi = s[Math.floor(a.length * 0.95)] || 1;
+  const out = new Float32Array(a.length);
+  const d = Math.max(1e-9, hi - lo);
+  for (let i = 0; i < a.length; i++) out[i] = clamp01((a[i] - lo) / d);
+  return out;
 }
 
 function smooth(a, w) {

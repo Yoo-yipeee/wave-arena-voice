@@ -16,11 +16,39 @@
  *       world units) so the two cannot compound into an unpredictable range.
  */
 
-export const FORM_NAMES = ['harmonic', 'radial', 'rings', 'towers', 'walls', 'arches', 'columns'];
+export const FORM_NAMES = ['voice', 'harmonic', 'radial', 'rings', 'towers', 'walls', 'arches', 'columns'];
 export const FORM_INDEX = FORM_NAMES.reduce((o, n, i) => (o[n] = i, o), {});
 export const FORM_COUNT = FORM_NAMES.length;
 
 export const FORMS_GLSL = /* glsl */`
+// ---------------------------------------------------------------------------
+// voice — the melody, drawn as a ridge whose radius is the sung pitch.
+//
+// This is the lead form for lyric-driven songs. As the singer goes up the
+// ridge opens outward; as they come down it draws in. You are watching the
+// melody line itself, not a level meter responding to it. Effort narrows and
+// sharpens the ridge, because a belt is tighter and harder than a croon;
+// vibrato wobbles it; each sung note sends a swell out through the arena.
+// ---------------------------------------------------------------------------
+float form_voice(vec2 p, float r, float ang) {
+  float rv = mix(3.5, 19.0, uVoicePitch);
+  rv += uVibrato * 0.9 * sin(uTime * 31.0);
+
+  float w     = mix(2.9, 1.35, uEffort);
+  float ridge = exp(-pow((r - rv) / w, 2.0));
+
+  // Formant-ish lobes. Deep enough that the ridge reads as a cluster of peaks
+  // rather than a closed rim — a continuous wall looks like a crater, not water.
+  float a1 = 0.5 + 0.5 * sin(ang * 3.0 + uTime * 0.40);
+  float a2 = 0.5 + 0.5 * sin(ang * 5.0 - uTime * 0.70 + 1.3);
+  float lobes = 0.26 + 0.74 * pow(a1 * 0.62 + a2 * 0.38, 1.5);
+
+  // a new note pushes a swell outward from the ridge
+  float swell = 1.0 + uVoiceOnset * 0.95 * sin((r - rv) * 0.7 - uTime * 6.0);
+
+  return ridge * lobes * swell * uVoicePresence * (0.45 + uEffort * 1.2) * 2.2;
+}
+
 // ---------------------------------------------------------------------------
 // harmonic — the chord itself, laid out around the arena.
 //
@@ -145,13 +173,14 @@ float form_columns(vec2 p, float r, float ang) {
 // ---------------------------------------------------------------------------
 float formSum(vec2 p, float r, float ang) {
   float h = 0.0;
-  if (uForm[0] > 0.001) h += uForm[0] * form_harmonic(p, r, ang);
-  if (uForm[1] > 0.001) h += uForm[1] * form_radial  (p, r, ang);
-  if (uForm[2] > 0.001) h += uForm[2] * form_rings   (p, r, ang);
-  if (uForm[3] > 0.001) h += uForm[3] * form_towers  (p, r, ang);
-  if (uForm[4] > 0.001) h += uForm[4] * form_walls   (p, r, ang);
-  if (uForm[5] > 0.001) h += uForm[5] * form_arches  (p, r, ang);
-  if (uForm[6] > 0.001) h += uForm[6] * form_columns (p, r, ang);
+  if (uForm[0] > 0.001) h += uForm[0] * form_voice   (p, r, ang);
+  if (uForm[1] > 0.001) h += uForm[1] * form_harmonic(p, r, ang);
+  if (uForm[2] > 0.001) h += uForm[2] * form_radial  (p, r, ang);
+  if (uForm[3] > 0.001) h += uForm[3] * form_rings   (p, r, ang);
+  if (uForm[4] > 0.001) h += uForm[4] * form_towers  (p, r, ang);
+  if (uForm[5] > 0.001) h += uForm[5] * form_walls   (p, r, ang);
+  if (uForm[6] > 0.001) h += uForm[6] * form_arches  (p, r, ang);
+  if (uForm[7] > 0.001) h += uForm[7] * form_columns (p, r, ang);
   return h;
 }
 `;

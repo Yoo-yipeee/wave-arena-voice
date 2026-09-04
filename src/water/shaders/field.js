@@ -20,10 +20,11 @@ uniform float uRingRadius, uRingWidth;
 uniform float uEruption, uShock, uAwake;
 uniform float uHeightRef;   // expected crest height now — colour is relative to it
 uniform float uRadius;
-uniform float uForm[7];
+uniform float uForm[8];
 uniform sampler2D uSpectrum;
 uniform sampler2D uChroma;      // 12 pitch classes, wrapped
 uniform float uTonic, uMode, uConsonance, uHarmChange;
+uniform float uVoicePresence, uVoicePitch, uEffort, uVibrato, uVoiceOnset, uVoicePhrase;
 uniform vec4 uImpulseA[MAX_IMPULSES];   // xz origin, birth time, strength
 uniform vec4 uImpulseB[MAX_IMPULSES];   // speed, width, kind, -
 
@@ -132,11 +133,13 @@ export function createFieldUniforms(THREE, spectrumTexture, chromaTexture, radiu
     uEruption: { value: 0 }, uShock: { value: 0 }, uAwake: { value: 0.25 },
     uHeightRef: { value: 1.0 },
     uRadius: { value: radius },
-    uForm: { value: new Float32Array(7) },
+    uForm: { value: new Float32Array(8) },
     uSpectrum: { value: spectrumTexture },
     uChroma: { value: chromaTexture },
     uTonic: { value: 0 }, uMode: { value: 0 },
     uConsonance: { value: 0 }, uHarmChange: { value: 0 },
+    uVoicePresence: { value: 0 }, uVoicePitch: { value: 0 }, uEffort: { value: 0 },
+    uVibrato: { value: 0 }, uVoiceOnset: { value: 0 }, uVoicePhrase: { value: 0 },
     uImpulseA: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) },
     uImpulseB: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) },
   };
