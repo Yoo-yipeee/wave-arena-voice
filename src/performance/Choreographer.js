@@ -22,17 +22,17 @@ export const SECTIONS = ['silence', 'intro', 'verse', 'build', 'drop', 'chorus',
  */
 const LOOKS = {
   silence: {
-    height: 0.7, spectrumGain: 0.10, complexity: 0.10, chaos: 0.02, flow: 0.28, symmetry: 2,
+    height: 0.6, spectrumGain: 0.10, complexity: 0.10, chaos: 0.02, flow: 0.28, symmetry: 2,
     mist: 0.20, spray: 0.0, bloom: 0.55, heat: 0.0, camDist: 40, camHeight: 13.0, fov: 34,
     forms: { voice: 0.20, harmonic: 0.25, radial: 0.06, rings: 0.55, towers: 0.0, walls: 0.10, arches: 0.0, columns: 0.0 },
   },
   intro: {
-    height: 1.1, spectrumGain: 0.30, complexity: 0.24, chaos: 0.05, flow: 0.45, symmetry: 2,
+    height: 1.0, spectrumGain: 0.30, complexity: 0.24, chaos: 0.05, flow: 0.45, symmetry: 2,
     mist: 0.32, spray: 0.03, bloom: 0.7, heat: 0.05, camDist: 38, camHeight: 12.0, fov: 35,
     forms: { voice: 0.85, harmonic: 0.60, radial: 0.16, rings: 0.60, towers: 0.05, walls: 0.18, arches: 0.05, columns: 0.0 },
   },
   verse: {
-    height: 2.2, spectrumGain: 0.62, complexity: 0.45, chaos: 0.10, flow: 0.7, symmetry: 2,
+    height: 1.7, spectrumGain: 0.62, complexity: 0.45, chaos: 0.10, flow: 0.7, symmetry: 2,
     mist: 0.40, spray: 0.12, bloom: 0.85, heat: 0.18, camDist: 34, camHeight: 11.0, fov: 37,
     forms: { voice: 1.15, harmonic: 0.85, radial: 0.28, rings: 0.50, towers: 0.18, walls: 0.30, arches: 0.10, columns: 0.10 },
   },
@@ -42,17 +42,17 @@ const LOOKS = {
     forms: { voice: 1.00, harmonic: 0.80, radial: 0.38, rings: 0.40, towers: 0.55, walls: 0.28, arches: 0.20, columns: 0.35 },
   },
   drop: {
-    height: 2.3, spectrumGain: 1.15, complexity: 0.95, chaos: 0.42, flow: 1.35, symmetry: 4,
+    height: 3.2, spectrumGain: 1.15, complexity: 0.95, chaos: 0.42, flow: 1.35, symmetry: 4,
     mist: 0.85, spray: 1.0, bloom: 1.35, heat: 1.0, camDist: 43, camHeight: 21.0, fov: 46,
     forms: { voice: 1.00, harmonic: 1.00, radial: 0.50, rings: 0.75, towers: 0.9, walls: 0.5, arches: 0.45, columns: 0.6 },
   },
   chorus: {
-    height: 2.0, spectrumGain: 1.0, complexity: 0.8, chaos: 0.24, flow: 1.15, symmetry: 4,
+    height: 3.0, spectrumGain: 1.0, complexity: 0.8, chaos: 0.24, flow: 1.15, symmetry: 4,
     mist: 0.70, spray: 0.6, bloom: 1.15, heat: 0.72, camDist: 41, camHeight: 18.0, fov: 41,
     forms: { voice: 1.25, harmonic: 1.00, radial: 0.45, rings: 0.6, towers: 0.65, walls: 0.4, arches: 0.6, columns: 0.75 },
   },
   break: {
-    height: 0.9, spectrumGain: 0.28, complexity: 0.2, chaos: 0.04, flow: 0.4, symmetry: 2,
+    height: 0.85, spectrumGain: 0.28, complexity: 0.2, chaos: 0.04, flow: 0.4, symmetry: 2,
     mist: 0.34, spray: 0.05, bloom: 0.7, heat: 0.08, camDist: 39, camHeight: 12.0, fov: 34,
     forms: { voice: 0.70, harmonic: 0.55, radial: 0.12, rings: 0.6, towers: 0.02, walls: 0.14, arches: 0.05, columns: 0.0 },
   },
@@ -406,11 +406,15 @@ export class Choreographer {
       const hot = this.section === 'drop' || this.section === 'chorus';
       if (m.onset.kick) {
         // Kick: forward shockwave from the heart of the arena.
+        // A heavy low hit should read as weight, not as a ripple. More bass
+        // means a slower, broader, stronger front — a stomp that moves the
+        // whole body of water rather than a thin ring skating over it.
         const jitter = hot ? 2.6 : 0.9;
+        const stomp = m.bass;
         this.emit(
           (Math.random() - 0.5) * jitter, (Math.random() - 0.5) * jitter,
-          0.7 + m.bass * (hot ? 2.1 : 1.2),
-          6.5 + m.bass * 4.5, 3.4 + m.bass * 2.4, 0,
+          0.75 + stomp * (hot ? 2.6 : 1.6),
+          6.4 - stomp * 1.8, 3.6 + stomp * 5.0, 0,
         );
         this.events.push({ type: 'kick', strength: m.bass });
       }
@@ -459,7 +463,7 @@ export class Choreographer {
     const vocalDrive = vx ? vx.presence * (0.3 + vx.effort * 1.0) : 0;
     const breath = vx ? 1 - vx.gap * 0.22 * this._voiceSeen : 1;
     const wantHeight = Math.min(MAX_HEIGHT,
-      (look.height * (0.6 + Math.max(m.amplitude * 0.62, vocalDrive * 0.78)) * (1 + buildRamp * 0.55)
+      (look.height * (0.6 + Math.max(m.amplitude * 0.62, vocalDrive * 0.78)) * (1 + buildRamp * 0.32)
        + m.bass * 0.85 + this.p.eruption * 1.5) * breath);
     p.height += (wantHeight - p.height) * k;
     p.spectrumGain += (look.spectrumGain * (0.65 + m.amplitude * 0.7) - p.spectrumGain) * k;

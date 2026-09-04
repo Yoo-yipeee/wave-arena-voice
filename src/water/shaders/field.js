@@ -24,7 +24,7 @@ uniform float uForm[8];
 uniform sampler2D uSpectrum;
 uniform sampler2D uChroma;      // 12 pitch classes, wrapped
 uniform float uTonic, uMode, uConsonance, uHarmChange;
-uniform float uVoicePresence, uVoicePitch, uEffort, uVibrato, uVoiceOnset, uVoicePhrase;
+uniform float uVoicePresence, uVoicePitch, uEffort, uVibrato, uVoiceOnset, uVoicePhrase, uGrit;
 uniform vec4 uImpulseA[MAX_IMPULSES];   // xz origin, birth time, strength
 uniform vec4 uImpulseB[MAX_IMPULSES];   // speed, width, kind, -
 
@@ -140,6 +140,7 @@ export function createFieldUniforms(THREE, spectrumTexture, chromaTexture, radiu
     uConsonance: { value: 0 }, uHarmChange: { value: 0 },
     uVoicePresence: { value: 0 }, uVoicePitch: { value: 0 }, uEffort: { value: 0 },
     uVibrato: { value: 0 }, uVoiceOnset: { value: 0 }, uVoicePhrase: { value: 0 },
+    uGrit: { value: 0 },
     uImpulseA: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) },
     uImpulseB: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) },
   };

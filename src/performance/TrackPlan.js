@@ -68,7 +68,12 @@ export class TrackPlan {
    * event cannot fire twice, and so a long crescendo yields one moment.
    */
   _findDrops(back) {
-    const minGap = Math.max(1, Math.round(9 / this.binDur));
+    // A song has a handful of real moments, not one every few bars. Believer
+    // yielded nine, which put almost the whole track inside a build run-up and
+    // left the choruses smaller than the verses. Few and decisive beats many
+    // and uniform: if everything is an eruption, nothing is.
+    const maxDrops = Math.max(2, Math.min(5, Math.round(this.duration / 50)));
+    const minGap = Math.max(1, Math.round(14 / this.binDur));
     const riseGate = 0.13;
     const levelGate = this.peakLevel * 0.80;
 
@@ -87,6 +92,7 @@ export class TrackPlan {
     cands.sort((a, b) => b.score - a.score);
     const kept = [];
     for (const c of cands) {
+      if (kept.length >= maxDrops) break;
       if (kept.every(k => Math.abs(k.i - c.i) >= minGap)) kept.push(c);
     }
     return kept.map(c => c.i * this.binDur).sort((a, b) => a - b);

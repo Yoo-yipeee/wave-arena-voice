@@ -272,6 +272,7 @@ export class WaterArena {
       U.uVibrato.value += (v.vibrato - U.uVibrato.value) * (1 - Math.exp(-dt * 4));
       U.uVoicePhrase.value += (v.phrase - U.uVoicePhrase.value) * (1 - Math.exp(-dt * 5));
       U.uVoiceOnset.value = Math.max(U.uVoiceOnset.value * Math.exp(-dt * 3.2), v.onset ? 1 : 0);
+      U.uGrit.value += ((v.grit || 0) - U.uGrit.value) * (1 - Math.exp(-dt * 3));
     }
 
     // spectrum -> texture

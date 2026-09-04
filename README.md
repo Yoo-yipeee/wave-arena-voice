@@ -94,6 +94,32 @@ phrasing from the breaths between lines.
 energy** and **stereo width** in proportion. A chorus opens up in the top end
 and widens even when its RMS is identical to the verse.
 
+## What "it reacts but doesn't feel like the song" turned out to mean
+
+Measured against Believer, the water was **biggest in the verses and smallest
+in the choruses** — height 4.83 in verse 1 against 3.00 in chorus 1. The song
+was being played back inside out, which is why it read as reacting rather than
+performing. Three faults, all in the mapping rather than the analysis:
+
+**Nine drops in a song that has three.** With a drop every few bars, almost the
+whole track sat inside a build run-up, the build ramp inflated height, and the
+verses towered over the choruses. Drops are now capped to a handful, spaced far
+apart, and ranked — if everything is an eruption, nothing is.
+
+**Vocal presence inverted on the choruses.** Presence keyed on centre-dominance
+alone, but a big chorus doubles and spreads the vocal wide, so the measure
+collapsed exactly when the singing was most powerful: 0.19 in Believer's
+choruses against 0.94 in its verses. It now measures formant-band energy first,
+with centring only as a bonus.
+
+**The melody was plotted, not felt.** The voice drove a ridge whose radius was
+the sung pitch — an accurate graph of the tune and completely unfelt. Pitch is
+now a *quality*: it lifts and concentrates the body of water rather than moving
+a marker, effort is what pushes it up, and strain tears the surface.
+
+After: intro 1.82, verse 2.65, pre-chorus 3.24, chorus 4.89, final chorus 5.04.
+The arc of the song, in the shape of the water.
+
 ## Design decisions worth knowing
 
 **One height field, sampled by everything.** The water body, the contour lines,

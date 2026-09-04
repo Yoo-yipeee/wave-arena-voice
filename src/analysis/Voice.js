@@ -64,6 +64,7 @@ export class VoiceAnalyser {
       phrase: 0,       // 0..1 envelope across the current sung phrase
       gap: 1,          // 0 singing .. 1 long instrumental gap
       centreRatio: 0,  // how mono/centred the mix is right now
+      grit: 0,         // 0 clean and sustained .. 1 raw, strained, distorted
     };
 
     // The singer's range is learned from the track rather than assumed, so a
@@ -79,7 +80,7 @@ export class VoiceAnalyser {
     const s = this.state;
     s.presence = 0; s.pitch = 0; s.pitchHz = 0; s.pitchConf = 0;
     s.effort = 0; s.vibrato = 0; s.onset = false; s.phrase = 0; s.gap = 1;
-    s.centreRatio = 0;
+    s.centreRatio = 0; s.grit = 0;
   }
 
   update(dt, playing) {
@@ -101,7 +102,8 @@ export class VoiceAnalyser {
 
     // ---- centre-dominant spectrum -----------------------------------------
     let midSum = 0, sideSum = 0, centreSum = 0;
-    let lowE = 0, highE = 0;
+    let lowE = 0, highE = 0, voxSum = 0, fullSum = 0;
+    let gLog = 0, gArith = 0, gN = 0;
     for (let i = this.bandLo; i <= this.bandHi; i++) {
       const m = this.dbM[i] > -100 ? Math.pow(10, this.dbM[i] * 0.05) : 0;
       const sd = this.dbS[i] > -100 ? Math.pow(10, this.dbS[i] * 0.05) : 0;
@@ -112,14 +114,32 @@ export class VoiceAnalyser {
       const c = m * centred;
       this.centre[i] = c;
       midSum += m; sideSum += sd; centreSum += c;
-      if (i * this.binHz < 1500) lowE += c; else highE += c;
+      fullSum += m;
+      const hz = i * this.binHz;
+      if (hz < 1500) lowE += c; else highE += c;
+      // formant / presence region — where a voice lives regardless of panning
+      if (hz > 300 && hz < 3500) voxSum += m;
+      // spectral flatness of the centre channel: a raw, distorted, strained
+      // voice is noisy and flat; a clean sustained one is peaky
+      if (hz > 400 && hz < 4000) { gLog += Math.log(c + 1e-9); gArith += c; gN++; }
+    }
+
+    if (gN > 0) {
+      const gm = Math.exp(gLog / gN), am = gArith / gN + 1e-9;
+      s.grit += (clamp01((gm / am) * 2.4) - s.grit) * (1 - Math.exp(-dt * 3));
     }
 
     s.centreRatio = midSum > 1e-9 ? clamp01(1 - sideSum / (midSum + sideSum)) : 1;
 
     // ---- presence ----------------------------------------------------------
-    // Centre energy inside the vocal band, relative to the whole mid signal.
-    const rawPresence = midSum > 1e-9 ? clamp01((centreSum / midSum) * 1.9) : 0;
+    // Measured from formant-band energy first, with centre-dominance only as a
+    // bonus. Keying it on centring alone inverted on exactly the moments that
+    // matter most: a big chorus doubles and spreads the vocal wide, so the
+    // centre measure collapsed right when the singing was at its most powerful
+    // — presence read 0.19 in Believer's choruses against 0.94 in its verses.
+    const band = fullSum > 1e-9 ? voxSum / fullSum : 0;
+    const centreBonus = 0.58 + 0.42 * s.centreRatio;
+    const rawPresence = clamp01(band * 2.3) * centreBonus;
 
     // ---- melody pitch, by harmonic product spectrum -------------------------
     // Multiplying the spectrum by decimated copies of itself makes the true

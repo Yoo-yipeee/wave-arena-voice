@@ -22,31 +22,42 @@ export const FORM_COUNT = FORM_NAMES.length;
 
 export const FORMS_GLSL = /* glsl */`
 // ---------------------------------------------------------------------------
-// voice — the melody, drawn as a ridge whose radius is the sung pitch.
+// voice — the singer pushing the water, not a plot of the tune.
 //
-// This is the lead form for lyric-driven songs. As the singer goes up the
-// ridge opens outward; as they come down it draws in. You are watching the
-// melody line itself, not a level meter responding to it. Effort narrows and
-// sharpens the ridge, because a belt is tighter and harder than a croon;
-// vibrato wobbles it; each sung note sends a swell out through the arena.
+// The first version drew a ridge at a radius set by pitch, which is a graph of
+// the melody: accurate, and completely unfelt. What you actually feel when
+// someone sings is EFFORT — the push behind the note — and the grain of the
+// voice, and whether it sits high and tight or low and heavy.
+//
+// So pitch here is a QUALITY, not a position: it lifts and concentrates the
+// body rather than moving a marker. Effort is what raises it. Grit tears the
+// surface, so a strained, distorted voice churns where a clean one glides.
 // ---------------------------------------------------------------------------
 float form_voice(vec2 p, float r, float ang) {
-  float rv = mix(3.5, 19.0, uVoicePitch);
-  rv += uVibrato * 0.9 * sin(uTime * 31.0);
+  float lift   = uVoicePitch;
+  float spread = mix(13.0, 5.5, lift);          // low = broad and heavy, high = tight
+  float body   = exp(-pow(r / spread, 2.0));
 
-  float w     = mix(2.9, 1.35, uEffort);
-  float ridge = exp(-pow((r - rv) / w, 2.0));
+  // the singer's effort is the thing doing the pushing
+  float push = uVoicePresence * (0.22 + uEffort * 1.4);
 
-  // Formant-ish lobes. Deep enough that the ridge reads as a cluster of peaks
-  // rather than a closed rim — a continuous wall looks like a crater, not water.
-  float a1 = 0.5 + 0.5 * sin(ang * 3.0 + uTime * 0.40);
-  float a2 = 0.5 + 0.5 * sin(ang * 5.0 - uTime * 0.70 + 1.3);
-  float lobes = 0.26 + 0.74 * pow(a1 * 0.62 + a2 * 0.38, 1.5);
+  // Grain of the voice torn across the surface. Driven by strain as well as
+  // rasp: measured grit tracks breath and sibilance, and goes almost to zero
+  // in a big sustained chorus — but that is precisely where the singing is at
+  // its most strained, and the surface should be at its most broken.
+  float tear = uGrit * 0.34 + uEffort * uVoicePresence * 0.46;
+  float rough = 1.0 + tear * 0.62 * (
+        sin(r * 2.7 + ang * 5.0 - uTime * 4.0)
+      + 0.55 * sin(r * 5.3 - ang * 3.0 + uTime * 5.5));
 
-  // a new note pushes a swell outward from the ridge
-  float swell = 1.0 + uVoiceOnset * 0.95 * sin((r - rv) * 0.7 - uTime * 6.0);
+  // never a clean dome — it leans and breathes
+  float sway = 0.80 + 0.20 * sin(ang * 2.0 + uTime * 0.65)
+                    + 0.13 * sin(ang * 4.0 - uTime * 0.42);
 
-  return ridge * lobes * swell * uVoicePresence * (0.45 + uEffort * 1.2) * 2.2;
+  // each syllable lands as a shock through the whole body
+  float hit = 1.0 + uVoiceOnset * 0.75 * exp(-r * 0.09);
+
+  return body * sway * rough * hit * push * (0.65 + lift * 0.95) * 2.5;
 }
 
 // ---------------------------------------------------------------------------
