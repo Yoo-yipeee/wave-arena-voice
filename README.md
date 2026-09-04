@@ -120,6 +120,40 @@ a marker, effort is what pushes it up, and strain tears the surface.
 After: intro 1.82, verse 2.65, pre-chorus 3.24, chorus 4.89, final chorus 5.04.
 The arc of the song, in the shape of the water.
 
+## Water that behaves like water
+
+The field used to add gaussian bumps, lobes and rings at fixed radii straight
+into the height. That is a terrain generator — the result reads as a graph of
+the music because nothing in it obeys how water behaves.
+
+Real water only ever does one thing: a disturbance spreads outward, loses
+energy, and interferes with every other disturbance. So the music no longer
+draws shapes, it places **sources**, and the surface is the superposition of
+what they radiate. Twelve pitch classes stand around the pool; the singer
+disturbs the middle; strikes throw rings. The pattern is found, not drawn.
+
+Two details carry most of the realism:
+
+- **Gerstner waves displace horizontally as well as vertically.** Water
+  particles move in circles, which pinches crests and flattens troughs. A
+  purely vertical surface always reads as rubber sheeting however it is lit.
+- **Source amplitude falls as 1/√distance**, because a circular wavefront
+  spreads its energy around an ever-growing circumference. Getting this wrong
+  is most of why fake water looks fake.
+
+Wavelengths are a spectrum sized to the pool — a few long swells carry the
+shape and short ones ride on top. Only short waves and it looks like sand; only
+long ones and it looks like a mound.
+
+## Headroom
+
+The arena used to spend most of a song pressed against the top of the frame, so
+the biggest moment had nowhere left to go and every loud passage looked the
+same. Height is now raised to a power (1.85), which pushes ordinary loudness
+well down the range and reserves the top for the one moment that earns it: a
+passage driving 60% of maximum renders at 40%, while the true peak still
+reaches full height.
+
 ## Design decisions worth knowing
 
 **One height field, sampled by everything.** The water body, the contour lines,

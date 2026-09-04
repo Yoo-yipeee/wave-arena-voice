@@ -75,7 +75,19 @@ const PHRASE_VARIANTS = [
 ];
 
 /** Crest height ceiling, world units — the arena is 26 units across. */
-const MAX_HEIGHT = 5.2;
+const MAX_HEIGHT = 6.2;
+
+/**
+ * Shaping exponent on height.
+ *
+ * Without it the arena spent most of a song pressed against the top of the
+ * frame, so the biggest moment had nowhere left to go and every loud passage
+ * looked identical. Raising the drive to a power pushes ordinary loudness well
+ * down the range and reserves the top for the one moment that earns it: at 1.85
+ * a passage driving 60% of maximum renders at 40%, while the true peak still
+ * reaches full height.
+ */
+const HEIGHT_GAMMA = 1.85;
 
 /** How long before a planned drop the arena starts building. */
 const BUILD_LEAD = 8.0;
@@ -462,9 +474,9 @@ export class Choreographer {
     const vx = m.voice;
     const vocalDrive = vx ? vx.presence * (0.3 + vx.effort * 1.0) : 0;
     const breath = vx ? 1 - vx.gap * 0.22 * this._voiceSeen : 1;
-    const wantHeight = Math.min(MAX_HEIGHT,
-      (look.height * (0.6 + Math.max(m.amplitude * 0.62, vocalDrive * 0.78)) * (1 + buildRamp * 0.32)
-       + m.bass * 0.85 + this.p.eruption * 1.5) * breath);
+    const heightDrive = (look.height * (0.6 + Math.max(m.amplitude * 0.62, vocalDrive * 0.78))
+      * (1 + buildRamp * 0.32) + m.bass * 0.85 + this.p.eruption * 1.5) * breath;
+    const wantHeight = MAX_HEIGHT * Math.pow(clamp01(heightDrive / MAX_HEIGHT), HEIGHT_GAMMA);
     p.height += (wantHeight - p.height) * k;
     p.spectrumGain += (look.spectrumGain * (0.65 + m.amplitude * 0.7) - p.spectrumGain) * k;
     p.complexity += (look.complexity * (1 + buildRamp * 0.5) + m.highs * 0.25 - p.complexity) * k;
@@ -482,7 +494,9 @@ export class Choreographer {
       + this.p.eruption * 0.5 + (vx ? vx.presence * vx.effort * 0.28 : 0));
     p.heat += (wantHeat - p.heat) * (1 - Math.exp(-sdt * 2.0));
     // Frame the water we actually have, not the water the section nominally wants.
-    const distForHeight = look.camDist * (1 + Math.max(0, p.height - 2.4) * 0.13);
+    // Headroom: the frame should always have room above the water, so the one
+    // moment that does reach the top reads as reaching the top.
+    const distForHeight = look.camDist * (1.02 + Math.max(0, p.height - 2.6) * 0.07);
     p.camDist += (distForHeight - p.camDist) * (1 - Math.exp(-sdt * 0.55));
     p.camHeight += (look.camHeight - p.camHeight) * (1 - Math.exp(-sdt * 0.55));
     p.fov += (look.fov + this.p.eruption * 4 - p.fov) * (1 - Math.exp(-sdt * 1.2));

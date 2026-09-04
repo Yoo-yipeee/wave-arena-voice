@@ -225,7 +225,9 @@ export class WaterArena {
     U.uAwake.value = awake;
     // Colour is keyed to how tall the water is *expected* to be right now, so a
     // calm section still reads as luminous water rather than fading to black.
-    const href = Math.max(0.7, perf.height * 2.3);
+    // Crest reference. Too low and every wave saturates to white, losing the
+    // dark troughs that give water its depth; too high and it all goes flat.
+    const href = Math.max(0.7, perf.height * 1.55);
     U.uHeightRef.value += (href - U.uHeightRef.value) * (1 - Math.exp(-dtSmooth * 1.4));
 
     for (let i = 0; i < FORM_COUNT; i++) U.uForm.value[i] = perf.forms[i];
@@ -291,7 +293,7 @@ export class WaterArena {
 
     this.lineMat.uniforms.uOpacity.value = 0.62 + perf.intensity * 0.42;
     this.lineReflMat.uniforms.uOpacity.value = 0.44 + perf.intensity * 0.36;
-    this.bodyMat.uniforms.uOpacity.value = 0.50 + perf.intensity * 0.30;
+    this.bodyMat.uniforms.uOpacity.value = 0.44 + perf.intensity * 0.28;
 
     this.mistMat.uniforms.uMist.value = perf.mist;
     this.mistMat.uniforms.uSpray.value = perf.spray;

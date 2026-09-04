@@ -14,13 +14,20 @@ varying vec3  vNrm;
 
 void main() {
   vec2 p = vec2(position.x, position.z);
-  float h  = waveHeight(p);
-  float e  = 0.40;
-  float hx = waveHeight(p + vec2(e, 0.0));
-  float hz = waveHeight(p + vec2(0.0, e));
-  vec3 n = normalize(vec3(-(hx - h) / e, 1.0, -(hz - h) / e));
 
-  vec3 pos = vec3(position.x, h, position.z);
+  // Full 3D displacement: Gerstner moves water sideways as well as up, and the
+  // normal has to be built from the displaced tangents or the shading will not
+  // match the pinched crests the horizontal motion creates.
+  vec3 d  = waveDisplace(p);
+  float e = 0.40;
+  vec3 dX = waveDisplace(p + vec2(e, 0.0));
+  vec3 dZ = waveDisplace(p + vec2(0.0, e));
+  vec3 tX = vec3(e + dX.x - d.x, dX.y - d.y,     dX.z - d.z);
+  vec3 tZ = vec3(    dZ.x - d.x, dZ.y - d.y, e + dZ.z - d.z);
+  vec3 n  = normalize(cross(tZ, tX));
+
+  float h = d.y;
+  vec3 pos = vec3(position.x + d.x, d.y, position.z + d.z);
   vec4 world = modelMatrix * vec4(pos, 1.0);
   vWorld = world.xyz;
   vNrm   = normalize(mat3(modelMatrix) * n);
@@ -88,13 +95,13 @@ varying float vSlope;
 
 void main() {
   vec2 p = vec2(position.x, position.z);
-  float h  = waveHeight(p);
-  float e  = 0.55;
-  float hx = waveHeight(p + vec2(e, 0.0));
-  vSlope = abs(hx - h) / e;
-  vH = h;
+  vec3 d = waveDisplace(p);
+  float e = 0.55;
+  vec3 dX = waveDisplace(p + vec2(e, 0.0));
+  vSlope = abs(dX.y - d.y) / e;
+  vH = d.y;
   vR = length(p);
-  vec4 world = modelMatrix * vec4(position.x, h, position.z, 1.0);
+  vec4 world = modelMatrix * vec4(position.x + d.x, d.y, position.z + d.z, 1.0);
   gl_Position = projectionMatrix * viewMatrix * world;
 }
 `;
@@ -133,7 +140,8 @@ varying float vHot;
 
 void main() {
   vec2 p = vec2(position.x, position.z);
-  float h = waveHeight(p);
+  vec3 disp = waveDisplace(p);
+  float h = disp.y;
 
   float seed = aSeed;
   // each particle runs its own slow rise-and-reset cycle
@@ -141,7 +149,7 @@ void main() {
   float lift = life * (0.9 + uSpray * 6.0 * (0.30 + seed));
 
   vec2 drift = vec2(sin(uTime * 0.13 + seed * 41.0), cos(uTime * 0.11 + seed * 27.0)) * 1.6;
-  vec3 pos = vec3(position.x + drift.x, h + lift + 0.25, position.z + drift.y);
+  vec3 pos = vec3(position.x + disp.x + drift.x, h + lift + 0.25, position.z + disp.z + drift.y);
 
   vec4 mv = viewMatrix * modelMatrix * vec4(pos, 1.0);
   gl_Position = projectionMatrix * mv;

@@ -1,197 +1,29 @@
 /**
- * Visual primitives — the vocabulary the water can "speak".
+ * The vocabulary the water can "speak" — now a set of DISTURBANCES rather than
+ * a set of shapes.
  *
- * Each primitive is a GLSL height function evaluated over the arena plane and
- * blended by a weight the Choreographer controls. Adding a new form (a human
- * silhouette sampled from an SDF texture, a dancer, a skyline) means appending
- * one entry here plus one GLSL function; nothing else in the pipeline changes.
+ * These used to be GLSL functions that drew geometry straight into the height
+ * field: gaussian bumps, lobes, rings at fixed radii. That is why the surface
+ * read as terrain. Water does not hold a shape — it carries waves away from
+ * whatever disturbed it.
  *
- * Contract for a form function:
- *     float form_<name>(vec2 p, float r, float ang)
- *   p   arena-plane position (world units)
- *   r   length(p)
- *   ang atan(p.y, p.x)
- *   ->  a SHAPE, normalised to roughly [-1.2, 1.5]. Forms deliberately do not
- *       scale themselves with loudness: the Choreographer owns wave height (in
- *       world units) so the two cannot compound into an unpredictable range.
+ * So each entry here now names a *source* on the pool, and the Choreographer's
+ * weight for it says how hard that source is being driven. The surface is
+ * whatever the superposition of their radiated waves happens to be, which is
+ * why the resulting pattern looks found rather than drawn. The wave physics
+ * itself lives in `water/shaders/field.js`.
+ *
+ *   voice     the singer, disturbing the centre of the pool
+ *   harmonic  twelve pitch classes around the rim, one per note sounding
+ *   radial    fine spectral texture riding the surface
+ *   rings     a slow concentric swell breathing through the middle
+ *   walls     a front crossing the pool, like wind or a passing wake
+ *
+ * `towers`, `arches` and `columns` are retained as names so the Choreographer's
+ * section tables and phrase variants stay intact, but they no longer place
+ * sources of their own — they were the most obviously artificial of the old
+ * shapes, static bumps sitting on the water instead of moving through it.
  */
-
 export const FORM_NAMES = ['voice', 'harmonic', 'radial', 'rings', 'towers', 'walls', 'arches', 'columns'];
 export const FORM_INDEX = FORM_NAMES.reduce((o, n, i) => (o[n] = i, o), {});
 export const FORM_COUNT = FORM_NAMES.length;
-
-export const FORMS_GLSL = /* glsl */`
-// ---------------------------------------------------------------------------
-// voice — the singer pushing the water, not a plot of the tune.
-//
-// The first version drew a ridge at a radius set by pitch, which is a graph of
-// the melody: accurate, and completely unfelt. What you actually feel when
-// someone sings is EFFORT — the push behind the note — and the grain of the
-// voice, and whether it sits high and tight or low and heavy.
-//
-// So pitch here is a QUALITY, not a position: it lifts and concentrates the
-// body rather than moving a marker. Effort is what raises it. Grit tears the
-// surface, so a strained, distorted voice churns where a clean one glides.
-// ---------------------------------------------------------------------------
-float form_voice(vec2 p, float r, float ang) {
-  float lift   = uVoicePitch;
-  float spread = mix(13.0, 5.5, lift);          // low = broad and heavy, high = tight
-  float body   = exp(-pow(r / spread, 2.0));
-
-  // the singer's effort is the thing doing the pushing
-  float push = uVoicePresence * (0.22 + uEffort * 1.4);
-
-  // Grain of the voice torn across the surface. Driven by strain as well as
-  // rasp: measured grit tracks breath and sibilance, and goes almost to zero
-  // in a big sustained chorus — but that is precisely where the singing is at
-  // its most strained, and the surface should be at its most broken.
-  float tear = uGrit * 0.34 + uEffort * uVoicePresence * 0.46;
-  float rough = 1.0 + tear * 0.62 * (
-        sin(r * 2.7 + ang * 5.0 - uTime * 4.0)
-      + 0.55 * sin(r * 5.3 - ang * 3.0 + uTime * 5.5));
-
-  // never a clean dome — it leans and breathes
-  float sway = 0.80 + 0.20 * sin(ang * 2.0 + uTime * 0.65)
-                    + 0.13 * sin(ang * 4.0 - uTime * 0.42);
-
-  // each syllable lands as a shock through the whole body
-  float hit = 1.0 + uVoiceOnset * 0.75 * exp(-r * 0.09);
-
-  return body * sway * rough * hit * push * (0.65 + lift * 0.95) * 2.5;
-}
-
-// ---------------------------------------------------------------------------
-// harmonic — the chord itself, laid out around the arena.
-//
-// Each of the twelve pitch classes owns a bearing, and its lobe rises with how
-// strongly that note is sounding. A triad is three peaks; a chord change moves
-// which peaks stand. The layout is rotated by the detected tonic so the root
-// keeps a fixed bearing — otherwise every chord change would spin the arena
-// instead of reshaping it.
-//
-// Mode bends the geometry rather than just the colour: minor narrows and
-// sharpens the lobes, major opens and rounds them.
-// ---------------------------------------------------------------------------
-float form_harmonic(vec2 p, float r, float ang) {
-  float pc   = fract((ang * INV_TAU + 0.5) - uTonic / 12.0);
-  float slot = pc * 12.0;
-  float f    = fract(slot);
-  float id   = floor(slot);
-
-  // sample at the slot centre so neighbouring pitch classes cannot smear
-  float amp = chromaAt((id + 0.5) / 12.0);
-
-  float maj    = uMode * 0.5 + 0.5;                  // 0 minor .. 1 major
-  float sharp  = mix(3.8, 1.15, maj);
-  float lobe   = pow(max(0.0, 1.0 - abs(f * 2.0 - 1.0)), sharp);
-
-  // a little per-note variation so twelve identical lobes never read as a dial
-  float vary = 0.82 + 0.36 * hash11(id * 2.17);
-  float rad  = uRingRadius * (0.88 + 0.24 * hash11(id * 5.31));
-  float env  = exp(-pow((r - rad) / (uRingWidth * mix(0.72, 1.28, maj)), 2.0));
-
-  // dissonance roughens the crest; consonance leaves it glassy
-  float rough = 1.0 + (1.0 - uConsonance) * 0.26 * sin(r * 5.2 + id * 11.0 - uTime * 3.1);
-
-  // a harmonic change travels outward through the structure
-  float wave = 1.0 + uHarmChange * 0.85 * sin(r * 0.85 - uTime * 5.0);
-
-  return amp * lobe * env * vary * rough * wave * 1.5;
-}
-
-// ---------------------------------------------------------------------------
-// radial — the song's spectrum wrapped around the arena. Fine detail and
-// shimmer layered over the harmonic structure.
-// ---------------------------------------------------------------------------
-float form_radial(vec2 p, float r, float ang) {
-  float au  = ang * INV_TAU + 0.5;
-  float sym = max(1.0, floor(uSymmetry));
-  float m   = abs(fract(au * sym) * 2.0 - 1.0);      // mirrored -> symmetrical
-  float s   = specSmooth(m);
-  float env = exp(-pow((r - uRingRadius) / uRingWidth, 2.0));
-  float ridge = 0.70 + 0.30 * sin(r * 1.7 - uTime * 2.2 * uFlow);
-  // a second, finer harmonic keeps the crests from reading as a plain fan
-  float fine = 0.82 + 0.18 * specSmooth(fract(m * 2.0 + 0.13));
-  return s * env * ridge * fine * 1.15;
-}
-
-// ---------------------------------------------------------------------------
-// rings — travelling concentric swells; the resting motion of the arena
-// ---------------------------------------------------------------------------
-float form_rings(vec2 p, float r, float ang) {
-  float w1 = sin(r * 0.70 - uTime * 2.0 * uFlow);
-  float w2 = sin(r * 1.29 + uTime * 1.25 * uFlow + 1.7);
-  float w3 = sin(r * 0.31 - uTime * 0.8 * uFlow + ang * 0.5);
-  return (w1 * 0.5 + w2 * 0.3 + w3 * 0.35) * exp(-r * 0.030) * 1.05;
-}
-
-// ---------------------------------------------------------------------------
-// towers — discrete columns on a ring, each keyed to its own spectral band
-// ---------------------------------------------------------------------------
-float form_towers(vec2 p, float r, float ang) {
-  const float N = 11.0;
-  float au   = ang * INV_TAU + 0.5;
-  float id   = floor(au * N);
-  float cell = fract(au * N) - 0.5;
-  float band = hash11(id * 1.37);
-  float amp  = specSmooth(band);
-  float rad  = 5.5 + 8.0 * hash11(id + 17.0);
-  float aw   = 0.15;
-  float g = exp(-(cell * cell) / (aw * aw)) * exp(-pow((r - rad) / 2.7, 2.0));
-  float pulse = 0.5 + 0.5 * sin(uTime * 2.6 * uFlow + id * 1.9);
-  return g * (0.45 + amp * 1.0) * pulse * 1.5;
-}
-
-// ---------------------------------------------------------------------------
-// walls — a wave wall traversing the arena, slowly rotating its heading
-// ---------------------------------------------------------------------------
-float form_walls(vec2 p, float r, float ang) {
-  float head = uTime * 0.11;
-  vec2 d = vec2(cos(head), sin(head));
-  float x = dot(p, d);
-  float span = 62.0;
-  float front = mod(uTime * 6.0 * uFlow, span) - span * 0.5;
-  float w1 = exp(-pow((x - front) / 3.2, 2.0)) * (0.8 + 0.2 * sin(x * 0.85 - uTime * 3.0));
-  float w2 = exp(-pow((x + front * 0.62) / 4.6, 2.0)) * 0.7;
-  return (w1 * 1.0 + w2 * 0.55) * 0.95;
-}
-
-// ---------------------------------------------------------------------------
-// arches — opposing arcs lifting out of the surface
-// ---------------------------------------------------------------------------
-float form_arches(vec2 p, float r, float ang) {
-  float R    = 9.5 + 3.0 * sin(uTime * 0.21);
-  float band = exp(-pow((r - R) / 1.9, 2.0));
-  float win  = smoothstep(0.15, 0.95, cos(ang * 2.0 + uTime * 0.32));
-  float lift = 0.62 + 0.38 * sin(ang * 6.0 - uTime * 2.1 * uFlow);
-  return band * win * lift * 1.25;
-}
-
-// ---------------------------------------------------------------------------
-// columns — a symmetrical lattice that pulses in unison (chorus architecture)
-// ---------------------------------------------------------------------------
-float form_columns(vec2 p, float r, float ang) {
-  vec2 g    = p / 5.2;
-  vec2 id   = floor(g);
-  vec2 cell = fract(g) - 0.5;
-  float d   = length(cell);
-  float sync = 0.35 + 0.65 * pow(max(0.0, sin(uBeatPhase * TAU)), 2.0);
-  float lat  = exp(-(d * d) / 0.055);
-  float vary = 0.6 + 0.4 * hash21(id);
-  return lat * vary * (0.45 + sync * 0.7 + uBeatPulse * 0.5) * 1.15 * exp(-r * 0.028);
-}
-
-// ---------------------------------------------------------------------------
-float formSum(vec2 p, float r, float ang) {
-  float h = 0.0;
-  if (uForm[0] > 0.001) h += uForm[0] * form_voice   (p, r, ang);
-  if (uForm[1] > 0.001) h += uForm[1] * form_harmonic(p, r, ang);
-  if (uForm[2] > 0.001) h += uForm[2] * form_radial  (p, r, ang);
-  if (uForm[3] > 0.001) h += uForm[3] * form_rings   (p, r, ang);
-  if (uForm[4] > 0.001) h += uForm[4] * form_towers  (p, r, ang);
-  if (uForm[5] > 0.001) h += uForm[5] * form_walls   (p, r, ang);
-  if (uForm[6] > 0.001) h += uForm[6] * form_arches  (p, r, ang);
-  if (uForm[7] > 0.001) h += uForm[7] * form_columns (p, r, ang);
-  return h;
-}
-`;

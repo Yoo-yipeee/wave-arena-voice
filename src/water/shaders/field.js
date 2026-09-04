@@ -1,11 +1,25 @@
-import { FORMS_GLSL } from '../../performance/Primitives.js';
-
 /**
- * The shared wave field.
+ * The shared wave field — an actual water surface rather than a sum of shapes.
  *
- * One height function, evaluated by every renderable in the arena — the water
- * body, the contour lines, the mirrored reflection and the particles all sample
- * the exact same GLSL, so they can never drift out of agreement.
+ * The previous version added gaussian bumps, lobes and rings at fixed radii
+ * straight into the height. That is a terrain generator: the result reads as a
+ * graph of the music, not as water, because nothing in it obeys how water
+ * behaves. Real water only ever does one thing — a disturbance spreads outward,
+ * loses energy, and interferes with every other disturbance.
+ *
+ * So the music no longer draws shapes. It places SOURCES, and the surface is
+ * the superposition of the waves they radiate:
+ *
+ *   displacement = gerstner swell        ambient, always breathing
+ *                + radiating sources     music-driven, propagating, interfering
+ *                + transient impulses    strikes: kick, snare, drops
+ *                + capillary detail      fine ripples riding the big ones
+ *
+ * Two details carry most of the realism. Gerstner waves displace HORIZONTALLY
+ * as well as vertically, which is what gives water its pinched crests and broad
+ * flat troughs — a pure sine surface always looks like rubber. And source
+ * amplitude falls as 1/sqrt(distance), because a circular wavefront spreads its
+ * energy around an ever-growing circumference.
  */
 export const FIELD_GLSL = /* glsl */`
 #define TAU 6.28318530718
@@ -18,11 +32,10 @@ uniform float uBeat, uBeatPulse, uBeatPhase;
 uniform float uScale, uSpectrumGain, uComplexity, uChaos, uFlow, uSymmetry;
 uniform float uRingRadius, uRingWidth;
 uniform float uEruption, uShock, uAwake;
-uniform float uHeightRef;   // expected crest height now — colour is relative to it
 uniform float uRadius;
 uniform float uForm[8];
 uniform sampler2D uSpectrum;
-uniform sampler2D uChroma;      // 12 pitch classes, wrapped
+uniform sampler2D uChroma;
 uniform float uTonic, uMode, uConsonance, uHarmChange;
 uniform float uVoicePresence, uVoicePitch, uEffort, uVibrato, uVoiceOnset, uVoicePhrase, uGrit;
 uniform vec4 uImpulseA[MAX_IMPULSES];   // xz origin, birth time, strength
@@ -55,18 +68,94 @@ float fbm(vec2 p) {
   return s;
 }
 
-// --- spectrum --------------------------------------------------------------
+// --- samplers --------------------------------------------------------------
 float spec(float t) { return texture2D(uSpectrum, vec2(clamp(t, 0.0, 1.0), 0.5)).r; }
-// wraps, so pitch class 11 sits next to 0 the way it does on the circle
 float chromaAt(float t) { return texture2D(uChroma, vec2(t, 0.5)).r; }
-float specSmooth(float t) {
-  float d = 0.013;
-  return spec(t - d) * 0.25 + spec(t) * 0.5 + spec(t + d) * 0.25;
+
+// ---------------------------------------------------------------------------
+// A point on the surface disturbed continuously, radiating rings outward.
+// Amplitude falls as 1/sqrt(d) because a circular front spreads its energy
+// around a growing circumference — this is why real ripples fade the way they
+// do, and getting it wrong is most of why fake water looks fake.
+// ---------------------------------------------------------------------------
+float radiate(vec2 p, vec2 c, float amp, float k, float speed, float ph) {
+  float d = distance(p, c);
+  float spread = inversesqrt(1.0 + d * 0.55);
+  return sin(d * k - uTime * speed + ph) * amp * spread * exp(-d * 0.042);
 }
 
-${FORMS_GLSL}
+// ---------------------------------------------------------------------------
+// Gerstner wave. The horizontal term is the whole point: water particles move
+// in circles, not up and down, which pinches the crests and flattens the
+// troughs. Without it a surface reads as rubber sheeting however it is lit.
+// ---------------------------------------------------------------------------
+vec3 gerstner(vec2 p, vec2 dir, float lambda, float steep, float amp, float speed) {
+  float k = TAU / lambda;
+  float f = k * dot(dir, p) - uTime * speed;
+  float c = cos(f);
+  return vec3(dir.x * steep * amp * c, amp * sin(f), dir.y * steep * amp * c);
+}
 
-// --- transient shockwaves --------------------------------------------------
+vec3 swell(vec2 p) {
+  float e = 0.45 + uAmp * 0.75;
+  vec3 s = vec3(0.0);
+  // Wavelengths sized to the pool, not to an ocean. At 34 units across a
+  // 26-unit arena there was barely one cycle of the largest wave in frame, so
+  // the surface read as a smooth mound instead of moving water.
+  // A spectrum, not a single scale: a few long swells carry the shape and the
+  // short ones ride on top of them. Only the short ones and the surface looks
+  // like sand; only the long ones and it looks like a mound.
+  s += gerstner(p, normalize(vec2( 0.86,  0.51)), 24.0, 0.66, 0.72 * e, 0.52 * uFlow);
+  s += gerstner(p, normalize(vec2(-0.44,  0.90)), 15.0, 0.60, 0.48 * e, 0.74 * uFlow);
+  s += gerstner(p, normalize(vec2( 0.31, -0.95)),  9.0, 0.50, 0.30 * e, 1.02 * uFlow);
+  s += gerstner(p, normalize(vec2(-0.92, -0.39)),  5.5, 0.40, 0.18 * e, 1.38 * uFlow);
+  s += gerstner(p, normalize(vec2( 0.62, -0.78)),  3.2, 0.32, 0.10 * e, 1.80 * uFlow);
+  return s;
+}
+
+// --- the music, as sources on the water ------------------------------------
+
+// Twelve pitch classes standing around the pool, each disturbing the surface as
+// strongly as that note is sounding. The rings they throw off interfere, and
+// that interference is what makes the pattern look found rather than drawn.
+float harmonicSources(vec2 p) {
+  float h = 0.0;
+  for (int i = 0; i < 12; i++) {
+    float fi = float(i);
+    float amp = chromaAt((fi + 0.5) / 12.0);
+    if (amp < 0.06) continue;
+    float a = (fi / 12.0 + uTonic / 12.0) * TAU;
+    vec2 c = vec2(cos(a), sin(a)) * uRingRadius;
+    // minor ripples tighter and colder, major broader and calmer
+    float k = mix(1.55, 1.05, uMode * 0.5 + 0.5);
+    h += radiate(p, c, amp * amp, k, 2.3 * uFlow, fi * 1.7);
+  }
+  return h * 0.78;
+}
+
+// The singer, disturbing the middle of the pool. Pitch is a quality here: a
+// high note tightens the ripples, a low one makes them long and heavy.
+float voiceSource(vec2 p) {
+  float amp = uVoicePresence * (0.25 + uEffort * 1.25);
+  if (amp < 0.02) return 0.0;
+  float k = mix(0.55, 1.45, uVoicePitch);
+  float wob = uVibrato * 0.3 * sin(uTime * 5.4);
+  float h = radiate(p, vec2(0.0), amp, k + wob, 1.85 * uFlow, 0.0);
+  // strain roughens the water it disturbs
+  float tear = uGrit * 0.3 + uEffort * uVoicePresence * 0.42;
+  h *= 1.0 + tear * 0.32 * sin(length(p) * 3.1 - uTime * 4.6);
+  return h * 1.85;
+}
+
+// A front crossing the pool, the way wind or a passing wake does.
+float travellingFront(vec2 p) {
+  float head = uTime * 0.09;
+  vec2 d = vec2(cos(head), sin(head));
+  float x = dot(p, d);
+  return sin(x * 0.62 - uTime * 2.4 * uFlow) * exp(-abs(x) * 0.012) * (0.4 + uMids * 0.7);
+}
+
+// --- transient strikes ------------------------------------------------------
 float impulses(vec2 p) {
   float h = 0.0;
   for (int i = 0; i < MAX_IMPULSES; i++) {
@@ -74,51 +163,53 @@ float impulses(vec2 p) {
     vec4 B = uImpulseB[i];
     if (A.w <= 0.001) continue;
     float age = uTime - A.z;
-    if (age < 0.0 || age > 3.4) continue;
+    if (age < 0.0 || age > 4.2) continue;
     float d = distance(p, A.xy);
     float dd = (d - age * B.x) / max(B.y, 0.4);
-    // a leading crest with a short trailing wake
-    float ring  = sin(dd * 2.6) * exp(-dd * dd);
-    float decay = exp(-age * 1.45) / (1.0 + d * 0.055);
-    float kind  = B.z > 1.5 ? 2.4 : (B.z > 0.5 ? 0.85 : 1.0);
+    // a leading crest with a short wake, spreading and dying like a real ring
+    float ring = sin(dd * 2.4) * exp(-dd * dd);
+    float decay = exp(-age * 1.25) * inversesqrt(1.0 + d * 0.5);
+    float kind = B.z > 1.5 ? 2.2 : (B.z > 0.5 ? 0.85 : 1.0);
     h += ring * decay * A.w * kind;
   }
   return h;
 }
 
-// --- the field ------------------------------------------------------------
-float waveHeight(vec2 p) {
+// --- the surface ------------------------------------------------------------
+vec3 waveDisplace(vec2 p) {
   float r = length(p);
-  float ang = atan(p.y, p.x + 1e-5);
   float edge = 1.0 - smoothstep(uRadius * 0.56, uRadius, r);
 
-  // Resting swell — the arena breathes even in silence.
-  float swell = sin(p.x * 0.115 + uTime * 0.42) * cos(p.y * 0.097 - uTime * 0.31) * 0.55
-              + sin(dot(p, vec2(0.083, -0.121)) + uTime * 0.55) * 0.40;
-  swell *= 0.55 + uAmp * 0.85;
+  vec3 g = swell(p);
+  float h = g.y;
 
-  // Every term below is normalised to roughly unit amplitude; uScale then sets
-  // the crest height in world units. Keeping the shape and the size separate is
-  // what makes a section's height predictable instead of multiplicative.
-  float h = swell * 0.55;
-  h += formSum(p, r, ang) * (0.55 + uSpectrumGain * 0.30);
-  h += impulses(p) * 0.55;
+  h += uForm[0] * voiceSource(p);
+  h += uForm[1] * harmonicSources(p);
+  h += uForm[5] * travellingFront(p) * 0.5;
+  h += uForm[3] * sin(r * 0.68 - uTime * 1.9 * uFlow) * exp(-r * 0.03) * 0.5;
 
-  // hi-hats: fine, fast surface shimmer
-  float shimmer = sin(r * 6.5 - uTime * 11.0) * 0.5 + (fbm(p * 1.6 + uTime * 1.4) - 0.5) * 1.2;
-  h += shimmer * uHighs * 0.30 * (0.35 + uComplexity);
+  h += impulses(p) * 0.85;
 
-  // turbulence grows with the section's chaos
-  h += (fbm(p * 0.21 + vec2(uTime * 0.28, -uTime * 0.19)) - 0.5) * uChaos * 1.8;
+  // capillary detail — the fine ripples that ride the big ones and catch light
+  float cap = fbm(p * 1.9 + vec2(uTime * 0.5, -uTime * 0.36)) - 0.5;
+  h += cap * (0.13 + uHighs * 0.28) * (0.4 + uComplexity * 0.7);
 
-  // arena-wide coordinated event
-  h += uEruption * (1.0 + 0.9 * fbm(p * 0.14 - uTime * 0.5)) * exp(-r * 0.030) * 1.1;
-  h += uShock * exp(-r * 0.048) * 0.35;
+  // turbulence when the music turns harsh
+  h += (fbm(p * 0.34 + vec2(uTime * 0.22, uTime * 0.19)) - 0.5) * uChaos * 1.1;
 
-  h *= uScale;   // world units
-  h *= edge;
-  return h * uAwake;
+  // arena-wide events
+  h += uEruption * (0.9 + 0.7 * fbm(p * 0.14 - uTime * 0.5)) * exp(-r * 0.035) * 1.0;
+  h += uShock * exp(-r * 0.05) * 0.3;
+
+  h *= uScale * edge * uAwake;
+
+  // Horizontal motion scales with the vertical so crests stay pinched at any
+  // size, and is damped at the rim so the disc keeps a clean silhouette.
+  vec2 lateral = vec2(g.x, g.z) * uScale * 0.5 * edge * uAwake;
+  return vec3(lateral.x, h, lateral.y);
 }
+
+float waveHeight(vec2 p) { return waveDisplace(p).y; }
 `;
 
 /** Uniform block shared by every material that samples the field. */
