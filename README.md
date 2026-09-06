@@ -268,6 +268,14 @@ builds, the break and the outro landing on the same bars as at 60 fps.
 
 ---
 
+## Demo audio
+
+Four tracks ship with the app under **PICK A SONG**, so one click gets you from
+a cold page to water moving. They are by **Kevin MacLeod**
+([incompetech.com](https://incompetech.com/)), licensed
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) —
+see [demo-audio/CREDITS.md](demo-audio/CREDITS.md). No other music is shipped.
+
 ## Licence
 
 MIT — see [LICENSE](LICENSE). Built with [three.js](https://threejs.org)
