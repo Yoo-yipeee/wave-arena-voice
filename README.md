@@ -265,3 +265,15 @@ uniforms 0.06 ms, render submit 1.37 ms), so the budget is dominated by the GPU.
 The choreography is frame-rate independent by construction: a full run at a
 forced ~12 fps produces the same section timeline, with all three drops, both
 builds, the break and the outro landing on the same bars as at 60 fps.
+
+---
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). Built with [three.js](https://threejs.org)
+(vendored, MIT).
+
+Contributions welcome. The engine, the contribution guide and the full
+explanation of how the music is read all live in
+[WAVE ARENA STUDIO](https://github.com/Yoo-yipeee/wave-arena-studio) — this
+build differs only in who the water listens to.
