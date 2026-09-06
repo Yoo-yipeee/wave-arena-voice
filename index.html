@@ -4,13 +4,13 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
 <meta name="theme-color" content="#000208" />
-<title>WAVE ARENA</title>
+<title>WAVE ARENA VOICE</title>
 
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    "three": "./vendor/three/three.module.min.js",
+    "three/addons/": "./vendor/three/addons/"
   }
 }
 </script>
@@ -107,6 +107,16 @@
     background:rgba(20,70,120,.3);
     box-shadow:0 0 44px rgba(50,170,255,.22);letter-spacing:.44em;text-indent:.44em;
   }
+  .entry{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:34px}
+  .entry .demo-btn{margin-top:0}
+  .demo-btn.ghost{border-color:rgba(95,217,255,.12);color:rgba(233,247,255,.55)}
+  .demo-btn.ghost:hover{border-color:rgba(95,217,255,.5);color:#fff}
+  .live-badge{
+    display:none;font-size:8.5px;letter-spacing:.3em;color:#ff8a8a;
+    border:1px solid rgba(255,120,120,.35);padding:5px 10px;border-radius:2px;
+  }
+  .live-badge.on{display:inline-block}
+
   .landing-foot{
     position:fixed;bottom:30px;left:0;right:0;text-align:center;
     font-size:8.5px;letter-spacing:.3em;color:rgba(220,238,255,.1);
@@ -211,6 +221,146 @@
   body.dragging #dragveil{opacity:1}
   #dragveil span{font-size:11px;letter-spacing:.5em;text-indent:.5em;color:rgba(233,247,255,.85)}
 
+  .recbtn.on{color:#ff5a5a}
+  .recbtn.on svg{animation:recpulse 1.2s ease-in-out infinite}
+  @keyframes recpulse{0%,100%{opacity:1}50%{opacity:.3}}
+  .rectime{
+    font-size:10px;letter-spacing:.14em;color:#ff8a8a;
+    font-variant-numeric:tabular-nums;min-width:34px;display:none;
+  }
+  .rectime.on{display:inline}
+
+  #clip{
+    position:fixed;inset:0;z-index:30;display:none;align-items:center;justify-content:center;
+    background:rgba(0,2,8,.82);backdrop-filter:blur(8px);
+  }
+  #clip.on{display:flex}
+  .clip-inner{display:flex;flex-direction:column;gap:14px;align-items:center;max-width:min(88vw,760px)}
+  .clip-label{font-size:9.5px;letter-spacing:.42em;color:var(--dim);text-indent:.42em}
+  #clipVid{max-width:100%;max-height:64vh;border:1px solid rgba(95,217,255,.18);background:#000}
+  .clip-actions{display:flex;gap:20px;align-items:center}
+  .clip-actions a,.clip-actions button{
+    font-family:inherit;font-size:9.5px;letter-spacing:.32em;text-indent:.32em;cursor:pointer;
+    background:none;border:1px solid rgba(95,217,255,.28);color:rgba(233,247,255,.85);
+    padding:12px 26px;text-decoration:none;transition:all .35s ease;
+  }
+  .clip-actions a:hover,.clip-actions button:hover{border-color:rgba(95,217,255,.75);background:rgba(20,70,120,.28)}
+
+
+  /* ---------- boot failure ---------- */
+  #bootfail{
+    position:fixed;inset:0;z-index:60;display:none;
+    align-items:center;justify-content:center;flex-direction:column;gap:18px;
+    background:rgba(0,2,8,.92);padding:8vw;text-align:center;
+  }
+  #bootfail.on{display:flex}
+  #bootfail .bf-title{font-size:10px;letter-spacing:.42em;text-indent:.42em;color:#ff8f6b}
+  #bootfail .bf-body{
+    font-size:9px;letter-spacing:.2em;line-height:2.2;color:rgba(220,238,255,.6);max-width:46ch;
+  }
+
+  /* ---------- controls ---------- */
+  .ctl{
+    background:none;border:0;padding:7px;cursor:pointer;color:rgba(220,238,255,.45);
+    transition:color .3s ease,transform .3s ease;line-height:0;
+  }
+  .ctl:hover{color:var(--accent);transform:scale(1.09)}
+  .ctl.active{color:var(--accent)}
+  .ctl svg{display:block}
+
+  .change{
+    display:inline-flex;align-items:center;gap:8px;
+    font-family:inherit;font-size:9px;letter-spacing:.26em;text-indent:.26em;
+    background:rgba(10,26,44,.35);border:1px solid rgba(95,217,255,.26);
+    color:rgba(233,247,255,.82);padding:9px 15px;border-radius:2px;cursor:pointer;
+    transition:all .35s ease;white-space:nowrap;
+  }
+  .change:hover{border-color:rgba(95,217,255,.7);background:rgba(20,70,120,.35);color:#fff}
+  .change svg{opacity:.75}
+
+  .chip{
+    display:inline-flex;gap:9px;align-items:center;
+    font-size:8.5px;letter-spacing:.2em;color:rgba(220,238,255,.34);
+    font-variant-numeric:tabular-nums;white-space:nowrap;
+  }
+  .chip b{font-weight:500;color:rgba(160,225,255,.72)}
+  .chip i{width:1px;height:9px;background:rgba(220,238,255,.16);display:inline-block}
+
+  /* ---------- end of track ---------- */
+  #ended{
+    position:fixed;inset:0;z-index:22;display:none;
+    align-items:center;justify-content:center;flex-direction:column;gap:26px;
+    background:radial-gradient(ellipse at center,rgba(6,16,30,.5),rgba(0,2,8,.86));
+    backdrop-filter:blur(4px);
+  }
+  #ended.on{display:flex}
+  #ended .ttl{font-size:10px;letter-spacing:.44em;color:var(--dim);text-indent:.44em}
+  #ended .row{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+  #ended button{
+    font-family:inherit;font-size:9.5px;letter-spacing:.3em;text-indent:.3em;cursor:pointer;
+    background:rgba(10,26,44,.4);border:1px solid rgba(95,217,255,.3);
+    color:rgba(233,247,255,.88);padding:15px 30px;transition:all .4s ease;
+  }
+  #ended button:hover{border-color:rgba(95,217,255,.85);background:rgba(20,70,120,.4);box-shadow:0 0 34px rgba(50,170,255,.2)}
+
+  /* ---------- first-run hint ---------- */
+  #hint{
+    position:fixed;left:50%;bottom:14%;transform:translateX(-50%) translateY(8px);
+    z-index:16;opacity:0;transition:all .7s ease;pointer-events:none;
+    font-size:8.5px;letter-spacing:.26em;color:rgba(220,238,255,.42);text-align:center;
+    line-height:2;max-width:84vw;
+  }
+  #hint.on{opacity:1;transform:translateX(-50%) translateY(0)}
+  #hint kbd{
+    font-family:inherit;border:1px solid rgba(220,238,255,.2);padding:2px 6px;
+    border-radius:2px;color:rgba(220,238,255,.6);letter-spacing:.1em;
+  }
+
+
+  /* ---------- settings ---------- */
+  #settings{
+    position:fixed;inset:0;z-index:32;display:none;align-items:center;justify-content:center;
+    background:rgba(0,2,8,.86);backdrop-filter:blur(10px);
+  }
+  #settings.on{display:flex}
+  .set-inner{
+    display:flex;flex-direction:column;gap:22px;width:min(90vw,520px);
+    padding:34px 30px;border:1px solid rgba(95,217,255,.14);background:rgba(4,10,20,.6);
+  }
+  .set-title{font-size:9.5px;letter-spacing:.44em;color:var(--dim);text-indent:.44em;text-align:center}
+  .set-rows{display:flex;flex-direction:column;gap:18px}
+  .set-row{display:flex;flex-direction:column;gap:9px}
+  .set-label{font-size:8.5px;letter-spacing:.34em;color:rgba(220,238,255,.32)}
+  .set-opts{display:flex;gap:10px;flex-wrap:wrap}
+  .set-opts button{
+    flex:1 1 150px;text-align:left;font-family:inherit;cursor:pointer;
+    background:rgba(10,26,44,.3);border:1px solid rgba(95,217,255,.14);
+    color:rgba(233,247,255,.6);padding:12px 14px;transition:all .3s ease;
+    font-size:9.5px;letter-spacing:.22em;
+  }
+  .set-opts button em{
+    display:block;margin-top:6px;font-style:normal;font-size:8.5px;
+    letter-spacing:.06em;color:rgba(220,238,255,.28);line-height:1.5;
+  }
+  .set-opts button:hover{border-color:rgba(95,217,255,.4)}
+  .set-opts button.on{
+    border-color:rgba(95,217,255,.7);color:#fff;background:rgba(20,70,120,.34);
+  }
+  .set-opts button.on em{color:rgba(180,232,255,.55)}
+  .set-done{
+    align-self:center;font-family:inherit;font-size:9.5px;letter-spacing:.34em;text-indent:.34em;
+    background:none;border:1px solid rgba(95,217,255,.3);color:rgba(233,247,255,.85);
+    padding:13px 34px;cursor:pointer;transition:all .35s ease;
+  }
+  .set-done:hover{border-color:rgba(95,217,255,.8);background:rgba(20,70,120,.3)}
+
+  .setup-link{
+    margin-top:22px;background:none;border:0;cursor:pointer;font-family:inherit;
+    font-size:8.5px;letter-spacing:.3em;text-indent:.3em;color:rgba(220,238,255,.28);
+    border-bottom:1px solid transparent;padding:4px 2px;transition:all .35s ease;
+  }
+  .setup-link:hover{color:var(--accent);border-color:rgba(95,217,255,.4)}
+
   #toast{
     position:fixed;left:50%;bottom:16%;transform:translateX(-50%) translateY(10px);
     z-index:25;opacity:0;transition:all .5s ease;pointer-events:none;
@@ -227,7 +377,9 @@
     .track .name{max-width:80vw}
     .vol{display:none}
     .play{width:40px;height:40px;flex-basis:40px}
-    .newsong{display:none}
+    .chip{display:none}
+    .change{padding:9px 12px;font-size:8.5px}
+    .change span{display:none}
   }
   @media (prefers-reduced-motion:reduce){
     .drop-target::after{animation:none}
@@ -237,7 +389,7 @@
 <body>
   <canvas id="stage"></canvas>
 
-  <div class="wordmark">WAVE&nbsp;<b>ARENA</b></div>
+  <div class="wordmark">WAVE&nbsp;<b>ARENA</b>&nbsp;<b>VOICE</b></div>
 
   <!-- LANDING ------------------------------------------------------------ -->
   <section id="landing">
@@ -247,7 +399,12 @@
     </div>
 
     <div class="split"><i></i>OR<i></i></div>
-    <button class="demo-btn" id="demoBtn">ENTER DEMO</button>
+    <div class="entry">
+      <button class="demo-btn" id="demoBtn">ENTER DEMO</button>
+      <button class="demo-btn ghost" id="micBtn">USE MICROPHONE</button>
+    </div>
+
+    <button class="setup-link" id="setupBtn">HOW YOU WANT IT</button>
 
     <div class="landing-foot">AUDIO IS ANALYSED LOCALLY IN YOUR BROWSER &middot; NOTHING IS UPLOADED</div>
   </section>
@@ -266,19 +423,52 @@
         <div class="state" id="stateLabel">STANDBY</div>
       </div>
       <div class="right">
+        <div class="chip" id="infoChip"></div>
         <div class="times"><b id="tCur">0:00</b> <span style="opacity:.35">/</span> <span id="tDur">0:00</span></div>
+
+        <button class="ctl" id="loopBtn" title="Loop" aria-label="Loop">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+            <path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+            <path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+          </svg>
+        </button>
+
         <div class="vol">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
             <path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M17 8.5a5 5 0 0 1 0 7"/>
           </svg>
           <input type="range" id="vol" min="0" max="1" step="0.01" value="0.85" aria-label="Volume" />
         </div>
-        <button class="iconbtn" id="fsBtn" title="Fullscreen" aria-label="Fullscreen">
+
+        <button class="ctl recbtn" id="recBtn" title="Record a clip" aria-label="Record a clip">
+          <svg width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="currentColor"/></svg>
+        </button>
+        <span class="rectime" id="recTime"></span>
+
+        <button class="ctl" id="momentBtn" title="Capture this song's biggest moment" aria-label="Capture the drop">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+            <path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"/>
+          </svg>
+        </button>
+
+        <button class="ctl" id="setBtn" title="Options" aria-label="Options">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 7 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H1a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 2.6 7a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H7a1.7 1.7 0 0 0 1-1.5V1a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V7a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>
+          </svg>
+        </button>
+        <button class="ctl" id="fsBtn" title="Fullscreen" aria-label="Fullscreen">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
             <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>
           </svg>
         </button>
-        <button class="newsong" id="newSong">NEW SONG</button>
+
+        <button class="change" id="newSong" title="Load another song">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          <span>NEW SONG</span>
+        </button>
       </div>
     </div>
 
@@ -296,9 +486,64 @@
   </footer>
 
   <div id="dragveil"><span>RELEASE TO BEGIN</span></div>
+  <div id="ended">
+    <div class="ttl">PERFORMANCE COMPLETE</div>
+    <div class="row">
+      <button id="againBtn">PLAY AGAIN</button>
+      <button id="anotherBtn">NEW SONG</button>
+    </div>
+  </div>
+
+  <div id="hint">
+    DROP ANOTHER SONG ANY TIME &nbsp;&middot;&nbsp; <kbd>SPACE</kbd> PLAY &nbsp;&middot;&nbsp; <kbd>F</kbd> FULLSCREEN
+  </div>
+
   <div id="toast"></div>
+  <div id="clip">
+    <div class="clip-inner">
+      <div class="clip-label">CLIP READY</div>
+      <video id="clipVid" controls playsinline></video>
+      <div class="clip-actions">
+        <button id="clipShare" style="display:none">SHARE</button>
+        <a id="clipSave" download>SAVE</a>
+        <button id="clipClose">CLOSE</button>
+      </div>
+    </div>
+  </div>
   <input type="file" id="fileInput" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac" hidden />
 
+  <!-- If the engine never boots, say why. Until now a blocked CDN, a browser
+       without WebGL or a module error all produced exactly the same thing: a
+       black page with a landing screen whose buttons quietly did nothing. -->
+  <div id="bootfail">
+    <div class="bf-title">THE ARENA COULD NOT START</div>
+    <div class="bf-body" id="bootfailBody"></div>
+  </div>
+
   <script type="module" src="./src/main.js"></script>
+  <script>
+  (function () {
+    var reason = '';
+    try {
+      var c = document.createElement('canvas');
+      if (!(c.getContext('webgl2') || c.getContext('webgl'))) {
+        reason = 'THIS BROWSER HAS NO WEBGL. TRY CHROME, EDGE, SAFARI OR FIREFOX, AND CHECK THAT HARDWARE ACCELERATION IS ON.';
+      }
+    } catch (e) {
+      reason = 'THIS BROWSER HAS NO WEBGL.';
+    }
+    window.addEventListener('error', function (e) {
+      if (!reason && e && (e.filename || '').indexOf('three') > -1) {
+        reason = 'THE 3D ENGINE FAILED TO LOAD. RELOADING USUALLY FIXES IT.';
+      }
+    }, true);
+    setTimeout(function () {
+      if (document.body.classList.contains('booted')) return;
+      document.getElementById('bootfailBody').textContent =
+        reason || 'THE ENGINE DID NOT LOAD. RELOADING USUALLY FIXES IT; IF NOT, THE BROWSER CONSOLE WILL SAY WHY.';
+      document.getElementById('bootfail').classList.add('on');
+    }, 6000);
+  })();
+  </script>
 </body>
 </html>

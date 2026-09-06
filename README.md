@@ -1,14 +1,24 @@
 # WAVE ARENA — VOICE
 
-Turn music into a visual performance. Upload a song, press play, watch a body of
+Turn music into a visual performance. Drop a song, press play, watch a body of
 water perform it.
 
-> **This is the vocal-led variant.** The original — tuned for instrumental and
-> tonal material, where it works well — lives at
-> [Yoo-yipeee/wave-arena](https://github.com/Yoo-yipeee/wave-arena).
+### ▶ [Open it](https://yoo-yipeee.github.io/wave-arena-voice/)
+
+> **The singer leads.** This is the same engine as
+> [WAVE ARENA STUDIO](https://github.com/Yoo-yipeee/wave-arena-studio)
+> ([open it](https://yoo-yipeee.github.io/wave-arena-studio/)) — same physics,
+> same colour system, same structural analysis — pointed at a different
+> question.
 >
-> Here the **singer leads**. Melody, vocal effort and phrasing drive the
-> performance, for lyric-driven songs where the voice carries the meaning.
+> Studio weighs a loud band and a sung line as equals and lets whichever is
+> carrying the music win. Here the voice is worth more than the mix behind it,
+> the pitched forms are read harder than the percussive ones, and the arena
+> eases back in the breath between phrases. On a ballad that is the difference
+> between water that answers the drums and water that answers the singer.
+>
+> Use studio for everything else. Use this for songs where the voice is the
+> point.
 
 Press **ENTER DEMO** for a built-in track, or drop in an mp3 of your own.
 Nothing is uploaded — the file is decoded and analysed entirely in your browser.

@@ -1,16 +1,8 @@
 import { formatTime } from '../audio/AudioEngine.js';
 
-const SECTION_LABEL = {
-  silence: 'STILL',
-  intro: 'INTRO',
-  verse: 'FLOW',
-  build: 'BUILD',
-  drop: 'DROP',
-  chorus: 'CHORUS',
-  break: 'BREAK',
-  outro: 'OUTRO',
-};
-const HOT_SECTIONS = new Set(['drop', 'chorus', 'build']);
+// The Choreographer emits its own display label now — there is no section
+// machine left to translate from.
+const HOT_SECTIONS = new Set(['DROP', 'PEAK', 'BUILD', 'LIFT']);
 
 /**
  * UI — every DOM concern lives here.
@@ -22,6 +14,9 @@ export class UI {
       landing: document.getElementById('landing'),
       dropTarget: document.getElementById('dropTarget'),
       demoBtn: document.getElementById('demoBtn'),
+      micBtn: document.getElementById('micBtn'),
+      setBtn: document.getElementById('setBtn'),
+      setupBtn: document.getElementById('setupBtn'),
       fileInput: document.getElementById('fileInput'),
       loading: document.getElementById('loading'),
       loadingLabel: document.getElementById('loadingLabel'),
@@ -41,6 +36,20 @@ export class UI {
       newSong: document.getElementById('newSong'),
       wordmark: document.querySelector('.wordmark'),
       toast: document.getElementById('toast'),
+      recBtn: document.getElementById('recBtn'),
+      recTime: document.getElementById('recTime'),
+      clip: document.getElementById('clip'),
+      clipVid: document.getElementById('clipVid'),
+      clipSave: document.getElementById('clipSave'),
+      clipClose: document.getElementById('clipClose'),
+      clipShare: document.getElementById('clipShare'),
+      loopBtn: document.getElementById('loopBtn'),
+      momentBtn: document.getElementById('momentBtn'),
+      infoChip: document.getElementById('infoChip'),
+      ended: document.getElementById('ended'),
+      againBtn: document.getElementById('againBtn'),
+      anotherBtn: document.getElementById('anotherBtn'),
+      hint: document.getElementById('hint'),
     };
 
     this.on = {};                 // { file, demo, toggle, seek, volume, reset }
@@ -49,6 +58,9 @@ export class UI {
     this._lastMove = performance.now();
     this._peaks = null;
     this._sectionShown = '';
+    this._overHud = false;
+    this._infoShown = '';
+    this._hintShown = false;
 
     this._bind();
   }
@@ -67,6 +79,9 @@ export class UI {
       e.fileInput.value = '';
     });
     e.demoBtn.addEventListener('click', () => this.emit('demo'));
+    e.micBtn.addEventListener('click', () => this.emit('mic'));
+    e.setBtn.addEventListener('click', () => this.emit('settings'));
+    e.setupBtn.addEventListener('click', () => this.emit('settings'));
 
     // drag & drop anywhere on the page
     let dragDepth = 0;
@@ -88,6 +103,22 @@ export class UI {
     e.newSong.addEventListener('click', () => this.emit('reset'));
     e.vol.addEventListener('input', () => this.emit('volume', parseFloat(e.vol.value)));
     e.fsBtn.addEventListener('click', () => this.toggleFullscreen());
+    e.recBtn.addEventListener('click', () => this.emit('record'));
+    e.momentBtn.addEventListener('click', () => this.emit('moment'));
+    e.loopBtn.addEventListener('click', () => this.emit('loop'));
+    e.againBtn.addEventListener('click', () => { this.hideEnded(); this.emit('again'); });
+    e.anotherBtn.addEventListener('click', () => { this.hideEnded(); this.emit('reset'); });
+
+    // The HUD must never hide while the pointer is on it, or controls vanish
+    // out from under the cursor mid-reach.
+    e.hud.addEventListener('pointerenter', () => { this._overHud = true; });
+    e.hud.addEventListener('pointerleave', () => { this._overHud = false; this._lastMove = performance.now(); });
+    e.clipClose.addEventListener('click', () => {
+      e.clip.classList.remove('on');
+      e.clipVid.pause();
+      e.clipVid.removeAttribute('src');
+      e.clipVid.load();
+    });
 
     // scrubbing
     const posOf = ev => {
@@ -121,6 +152,54 @@ export class UI {
     window.addEventListener('keydown', wake);
   }
 
+  setLoop(on) { this.el.loopBtn.classList.toggle('active', on); }
+
+  /** Key / tempo / section, so the viewer can see what the water is reading. */
+  setInfo(parts) {
+    const txt = parts.filter(Boolean).join('\u0000');
+    if (txt === this._infoShown) return;
+    this._infoShown = txt;
+    this.el.infoChip.innerHTML = parts.filter(Boolean)
+      .map(t => `<b>${t}</b>`).join('<i></i>');
+  }
+
+  showEnded() { this.el.ended.classList.add('on'); }
+  hideEnded() { this.el.ended.classList.remove('on'); }
+
+  /** Shown once, the first time a performance starts. */
+  showHint() {
+    if (this._hintShown) return;
+    this._hintShown = true;
+    this.el.hint.classList.add('on');
+    setTimeout(() => this.el.hint.classList.remove('on'), 6500);
+  }
+
+  setRecording(on) {
+    this.el.recBtn.classList.toggle('on', on);
+    this.el.recTime.classList.toggle('on', on);
+    if (!on) this.el.recTime.textContent = '';
+  }
+
+  setRecordTime(seconds) {
+    const m = Math.floor(seconds / 60), s2 = Math.floor(seconds % 60);
+    this.el.recTime.textContent = `${m}:${s2 < 10 ? '0' : ''}${s2}`;
+  }
+
+  showClip(url, filename, file) {
+    this.el.clipVid.src = url;
+    this.el.clipSave.href = url;
+    this.el.clipSave.download = filename;
+    this.el.clip.classList.add('on');
+
+    // Share sheet where the platform has one — on a phone this is the whole
+    // path from "that looked good" to it being posted.
+    const canShare = file && navigator.canShare && navigator.canShare({ files: [file] });
+    this.el.clipShare.style.display = canShare ? '' : 'none';
+    this.el.clipShare.onclick = canShare
+      ? () => navigator.share({ files: [file], title: 'WAVE ARENA VOICE' }).catch(() => {})
+      : null;
+  }
+
   toggleFullscreen() {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
     else document.exitFullscreen?.();
@@ -149,6 +228,15 @@ export class UI {
     this.el.wordmark.style.opacity = '';
   }
 
+  /** Live input has no timeline, so the transport controls step aside. */
+  setLive(on) {
+    this.el.scrub.style.visibility = on ? 'hidden' : '';
+    this.el.tCur.parentElement.style.visibility = on ? 'hidden' : '';
+    this.el.loopBtn.style.display = on ? 'none' : '';
+    this.el.momentBtn.style.display = on ? 'none' : '';
+    this.el.stateLabel.style.color = on ? '#ff8a8a' : '';
+  }
+
   setPlaying(playing) {
     this.el.playBtn.classList.toggle('playing', playing);
     this.el.playIcon.innerHTML = playing
@@ -174,7 +262,7 @@ export class UI {
       e.tCur.textContent = formatTime(engine.currentTime);
     }
 
-    const label = SECTION_LABEL[perf.section] || '';
+    const label = perf.section || '';
     if (label !== this._sectionShown) {
       this._sectionShown = label;
       e.stateLabel.textContent = label;
@@ -182,7 +270,8 @@ export class UI {
     }
 
     // fade the chrome away while the performance is running and untouched
-    const idle = engine.playing && !this._scrubbing && (now - this._lastMove > 3200);
+    const idle = engine.playing && !this._scrubbing && !this._overHud
+      && (now - this._lastMove > 5200);
     e.hud.classList.toggle('idle', idle);
     e.wordmark.style.opacity = idle ? '0' : '';
   }

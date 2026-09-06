@@ -11,6 +11,8 @@ varying float vH;
 varying float vR;
 varying vec3  vWorld;
 varying vec3  vNrm;
+varying float vFoam;
+varying float vSteep;
 
 void main() {
   vec2 p = vec2(position.x, position.z);
@@ -26,6 +28,10 @@ void main() {
   vec3 tZ = vec3(    dZ.x - d.x, dZ.y - d.y, e + dZ.z - d.z);
   vec3 n  = normalize(cross(tZ, tX));
 
+  // steepness -> how close this patch is to breaking
+  vSteep = length(vec2(dX.y - d.y, dZ.y - d.y)) / e;
+  vFoam  = foamAt(p, vSteep);
+
   float h = d.y;
   vec3 pos = vec3(position.x + d.x, d.y, position.z + d.z);
   vec4 world = modelMatrix * vec4(pos, 1.0);
@@ -40,11 +46,15 @@ void main() {
 export const SURFACE_FRAG = /* glsl */`
 precision highp float;
 uniform vec3  uDeep, uMid, uHot;
-uniform float uOpacity, uHeat, uReflect, uRadius, uAwake, uHeightRef;
+uniform float uOpacity, uHeat, uReflect, uRadius, uAwake, uHeightRef, uGloss;
+uniform vec3  uFoamC;
+uniform float uFoamAmt, uSSS;
 varying float vH;
 varying float vR;
 varying vec3  vWorld;
 varying vec3  vNrm;
+varying float vFoam;
+varying float vSteep;
 
 void main() {
   vec3 V = normalize(cameraPosition - vWorld);
@@ -55,8 +65,11 @@ void main() {
 
   vec3 L1 = normalize(vec3(0.30, 0.80, 0.52));
   vec3 L2 = normalize(vec3(-0.62, 0.34, -0.30));
-  float spe = pow(max(dot(reflect(-L1, N), V), 0.0), 72.0)
-            + pow(max(dot(reflect(-L2, N), V), 0.0), 30.0) * 0.35;
+  // Glassy water throws a tight hard highlight; broken water scatters a soft
+  // wide one. This is most of what separates the two materials by eye.
+  float shine = mix(18.0, 96.0, uGloss);
+  float spe = pow(max(dot(reflect(-L1, N), V), 0.0), shine)
+            + pow(max(dot(reflect(-L2, N), V), 0.0), shine * 0.4) * 0.35;
   float diff = max(dot(N, L1), 0.0);
 
   float hn    = clamp(vH / uHeightRef, -1.2, 2.2);
@@ -66,12 +79,45 @@ void main() {
   vec3 col = mix(uDeep, uMid, clamp(hn * 0.70 + 0.16, 0.0, 1.0)) * 0.62;
   col = mix(col, uHot, crest * crest * (0.20 + uHeat * 0.42));
   col += uMid * fres * 0.34;
-  col += vec3(0.80, 0.94, 1.0) * spe * (0.28 + uHeat * 0.55);
+  // The specular used to be a hardcoded cold blue-white. That is defensible
+  // when every song is blue and wrong the moment they are not: on a gold track
+  // the brightest part of every crest was lit in the one colour the palette
+  // does not contain, so the water read as grey while the floor and the
+  // backdrop were visibly warm. Half the song's own highlight colour keeps the
+  // sun-on-water look without arguing with the palette.
+  // The highlight terms below are ADDITIVE and they all peak together on a
+  // crest. Measured on the glassiest of four test tracks they summed to 2.49 —
+  // two and a half times full white before tone mapping had even run — so every
+  // crest clipped and the frame went cream. They are scaled to land near 1.2 at
+  // their joint peak, which leaves ACES something to roll off instead of a
+  // value it can only clamp.
+  vec3 specTint = mix(vec3(0.82, 0.90, 1.0), uHot, 0.5);
+  col += specTint * spe * (0.16 + uHeat * 0.26);
   col += uMid * diff * 0.06;
   col *= 1.0 - deepness * 0.62;
 
+  // ---- subsurface scattering ------------------------------------------
+  // Light passing THROUGH a thin backlit crest. Every production water
+  // renderer has this, and without it water reads as plastic however well it
+  // is shaped: the glow inside a wave is what says the substance is water.
+  // Crest height stands in for thickness — a crest is thin, a trough is deep.
+  vec3 sssDir = normalize(-L1 + N * 0.55);
+  float back = pow(clamp(dot(V, sssDir), 0.0, 1.0), 4.0);
+  float thin = clamp(hn * 0.85, 0.0, 1.0);
+  col += uHot * back * thin * uSSS * (0.32 + uHeat * 0.34);
+
+  // ---- foam --------------------------------------------------------------
+  // Foam is capped short of erasing the water underneath it. At 0.88 a busy,
+  // percussive track foamed hard enough that its colour disappeared exactly
+  // when the song was at its biggest — so the calmer a record was, the more of
+  // its identity survived, which is backwards. Whitewater is white, but it is
+  // thin, and you can still see the sea through it.
+  float foam = clamp(vFoam * uFoamAmt, 0.0, 1.0);
+  col = mix(col, uFoamC, foam * 0.72);
+
   float edgeFade = 1.0 - smoothstep(uRadius * 0.60, uRadius * 0.99, vR);
   float a = uOpacity * edgeFade * (0.16 + crest * 0.74 + fres * 0.26);
+  a = mix(a, min(1.0, a + 0.55), foam);     // foam is opaque, water is not
 
   if (uReflect > 0.5) {
     a   *= 0.30 * (1.0 - smoothstep(0.0, uHeightRef * 2.4, abs(vH)));
@@ -179,6 +225,59 @@ void main() {
   float soft = smoothstep(0.25, 0.0, r);
   vec3 col = mix(uMidC, uHotC, vHot);
   gl_FragColor = vec4(col * soft * vA, 1.0);   // premultiplied, additive
+}
+`;
+
+/* ---------------------------------------------------------------------------
+ * CAUSTICS
+ *
+ * The bright shifting net of light on the bottom of a swimming pool. It is
+ * what a wavy surface does to light passing through it: where the surface is
+ * curved like a lens it focuses, and where it bulges it spreads.
+ *
+ * The focusing term is the LAPLACIAN of the surface height — the same quantity
+ * that tells you whether a lens is convex or concave. Negative curvature
+ * concentrates light, so -laplacian, clamped, is the caustic. No ray tracing
+ * and no second render: five height samples per vertex on a floor plane.
+ * ------------------------------------------------------------------------- */
+export const CAUSTIC_VERT = /* glsl */`
+${FIELD_GLSL}
+uniform float uFloorY, uCausticGain;
+varying float vC;
+varying float vR;
+
+void main() {
+  vec2 p = position.xy;              // plane built in XY, laid down as XZ below
+  float e = 1.15;
+  float h   = waveHeight(p);
+  float hx1 = waveHeight(p + vec2(e, 0.0));
+  float hx2 = waveHeight(p - vec2(e, 0.0));
+  float hz1 = waveHeight(p + vec2(0.0, e));
+  float hz2 = waveHeight(p - vec2(0.0, e));
+
+  float lap = (hx1 + hx2 + hz1 + hz2 - 4.0 * h) / (e * e);
+  // Clamped to 1 before the fragment sharpens it. Left at 3.2 the additive
+  // pass reached 7.7 after the power curve and washed the whole frame white.
+  vC = clamp(-lap * uCausticGain, 0.0, 1.0);
+  vR = length(p);
+
+  gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(p.x, uFloorY, p.y, 1.0);
+}
+`;
+
+export const CAUSTIC_FRAG = /* glsl */`
+precision highp float;
+uniform vec3  uCausticC;
+uniform float uRadius, uAwake, uCausticAmt;
+varying float vC;
+varying float vR;
+
+void main() {
+  float fade = 1.0 - smoothstep(uRadius * 0.45, uRadius * 1.1, vR);
+  // Sharpened hard: real caustics are thin bright filaments against dark, not
+  // an even glow. A gentle curve here reads as fog on the floor.
+  float c = pow(vC, 3.2);
+  gl_FragColor = vec4(uCausticC * c * fade * uAwake * uCausticAmt, 1.0);
 }
 `;
 

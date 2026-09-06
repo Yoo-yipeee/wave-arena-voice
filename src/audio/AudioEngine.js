@@ -21,6 +21,8 @@ export class AudioEngine {
 
     this.onEnded = null;
     this.onTrackLoaded = null;
+    this.live = false;        // listening to a microphone rather than a file
+    this._liveStart = 0;
   }
 
   /** Must be called from a user gesture. */
@@ -58,6 +60,7 @@ export class AudioEngine {
     // AnalyserNode reports magnitudes only, and |L+R| cannot be recovered from
     // |L| and |R| without the phase between them.
     const splitter = this.ctx.createChannelSplitter(2);
+    this._splitter = splitter;
     const midSum = this.ctx.createGain();
     const sideSum = this.ctx.createGain();
     const half = () => { const g = this.ctx.createGain(); g.gain.value = 0.5; return g; };
@@ -117,7 +120,43 @@ export class AudioEngine {
     if (this.onTrackLoaded) this.onTrackLoaded(this);
   }
 
+  /**
+   * Listen to the microphone instead of a file.
+   *
+   * The mic is connected to the analysers ONLY, never to the destination:
+   * routing live input to the speakers is an instant feedback loop through
+   * whatever the room can hear.
+   */
+  async useMicrophone() {
+    this.ensureContext();
+    await this.resume();
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    });
+    this.stop();
+    this._micStream = stream;
+    this._micSrc = this.ctx.createMediaStreamSource(stream);
+    for (const node of [this.analyser, this.harmonyAnalyser, this._splitter]) {
+      if (node) this._micSrc.connect(node);
+    }
+    this.buffer = null;
+    this.live = true;
+    this.playing = true;
+    this.title = 'LIVE INPUT';
+    this._liveStart = this.ctx.currentTime;
+    if (this.onTrackLoaded) this.onTrackLoaded(this);
+    return stream;
+  }
+
+  stopMicrophone() {
+    if (this._micSrc) { try { this._micSrc.disconnect(); } catch (e) {} this._micSrc = null; }
+    if (this._micStream) { for (const t of this._micStream.getTracks()) t.stop(); this._micStream = null; }
+    this.live = false;
+    this.playing = false;
+  }
+
   play() {
+    if (this.live) { this.playing = true; return; }
     if (!this.buffer || this.playing) return;
     this.resume();
 
@@ -148,6 +187,7 @@ export class AudioEngine {
   }
 
   pause() {
+    if (this.live) { this.playing = false; return; }
     if (!this.playing) return;
     this._offset = this.currentTime;
     this.stop();
@@ -185,12 +225,13 @@ export class AudioEngine {
   get volume() { return this._volume; }
 
   get currentTime() {
+    if (this.live) return this.ctx ? this.ctx.currentTime - this._liveStart : 0;
     if (!this.buffer) return 0;
     if (!this.playing) return this._offset;
     return Math.min(this._offset + (this.ctx.currentTime - this._startedAt), this.buffer.duration);
   }
 
-  get duration() { return this.buffer ? this.buffer.duration : 0; }
+  get duration() { return this.live ? 0 : (this.buffer ? this.buffer.duration : 0); }
   get progress() { return this.duration ? this.currentTime / this.duration : 0; }
 }
 

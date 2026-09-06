@@ -13,55 +13,111 @@
 
 import { FORM_COUNT, FORM_INDEX } from './Primitives.js';
 
-export const SECTIONS = ['silence', 'intro', 'verse', 'build', 'drop', 'chorus', 'break', 'outro'];
+export const SECTION_LABELS = ['STILL', 'QUIET', 'FLOW', 'LIFT', 'PEAK', 'BUILD', 'DROP'];
 
 /**
- * Target look per section. Blended, never switched.
- * `height` is the crest height in WORLD UNITS (the arena is 26 units across),
- * so a section's size is something you can read off the table directly.
+ * The look, as a continuous ramp rather than eight named rooms.
+ *
+ * This used to be a table of eight sections — silence, intro, verse, build,
+ * drop, chorus, break, outro — with a state machine choosing one, minimum dwell
+ * times, and hysteresis bands to stop it flapping. It flapped anyway: measured
+ * over twenty seconds of one slow love song the arena passed through verse,
+ * build, drop and chorus, and being labelled a "drop" is what made a tender
+ * song erupt. Every crossing was a step change in twelve parameters at once,
+ * and after the multiplication chain was removed from height, that stepping was
+ * the largest remaining source of the randomness this whole thing was accused
+ * of.
+ *
+ * A song does not have eight states. It has an amount of intensity that moves
+ * continuously, and a sense of whether it is gathering or spending. So there
+ * are two continuous coordinates now and no machine at all:
+ *
+ *   level  0..1  how big this moment is, against the track's own range
+ *   lift   0..1  how much it is gathering toward something
+ *
+ * `level` comes straight from the plan's relative level, which was always a
+ * continuous number — the old machine's whole job was to threshold it into
+ * labels and then look those labels back up. That round trip is gone.
+ *
+ * These anchors are the old table's values placed at the level they described,
+ * and blendLook interpolates between them. A drop is still an EVENT, because a
+ * drop is a moment rather than a region.
  */
-const LOOKS = {
-  silence: {
-    height: 0.6, spectrumGain: 0.10, complexity: 0.10, chaos: 0.02, flow: 0.28, symmetry: 2,
-    mist: 0.20, spray: 0.0, bloom: 0.55, heat: 0.0, camDist: 40, camHeight: 13.0, fov: 34,
-    forms: { voice: 0.20, harmonic: 0.25, radial: 0.06, rings: 0.55, towers: 0.0, walls: 0.10, arches: 0.0, columns: 0.0 },
-  },
-  intro: {
-    height: 1.0, spectrumGain: 0.30, complexity: 0.24, chaos: 0.05, flow: 0.45, symmetry: 2,
-    mist: 0.32, spray: 0.03, bloom: 0.7, heat: 0.05, camDist: 38, camHeight: 12.0, fov: 35,
-    forms: { voice: 0.85, harmonic: 0.60, radial: 0.16, rings: 0.60, towers: 0.05, walls: 0.18, arches: 0.05, columns: 0.0 },
-  },
-  verse: {
-    height: 1.7, spectrumGain: 0.62, complexity: 0.45, chaos: 0.10, flow: 0.7, symmetry: 2,
-    mist: 0.40, spray: 0.12, bloom: 0.85, heat: 0.18, camDist: 34, camHeight: 11.0, fov: 37,
-    forms: { voice: 1.15, harmonic: 0.85, radial: 0.28, rings: 0.50, towers: 0.18, walls: 0.30, arches: 0.10, columns: 0.10 },
-  },
-  build: {
-    height: 1.9, spectrumGain: 0.85, complexity: 0.75, chaos: 0.26, flow: 1.05, symmetry: 3,
-    mist: 0.60, spray: 0.30, bloom: 1.0, heat: 0.45, camDist: 38, camHeight: 14.5, fov: 39,
-    forms: { voice: 1.00, harmonic: 0.80, radial: 0.38, rings: 0.40, towers: 0.55, walls: 0.28, arches: 0.20, columns: 0.35 },
-  },
-  drop: {
-    height: 3.2, spectrumGain: 1.15, complexity: 0.95, chaos: 0.42, flow: 1.35, symmetry: 4,
-    mist: 0.85, spray: 1.0, bloom: 1.35, heat: 1.0, camDist: 43, camHeight: 21.0, fov: 46,
-    forms: { voice: 1.00, harmonic: 1.00, radial: 0.50, rings: 0.75, towers: 0.9, walls: 0.5, arches: 0.45, columns: 0.6 },
-  },
-  chorus: {
-    height: 3.0, spectrumGain: 1.0, complexity: 0.8, chaos: 0.24, flow: 1.15, symmetry: 4,
-    mist: 0.70, spray: 0.6, bloom: 1.15, heat: 0.72, camDist: 41, camHeight: 18.0, fov: 41,
-    forms: { voice: 1.25, harmonic: 1.00, radial: 0.45, rings: 0.6, towers: 0.65, walls: 0.4, arches: 0.6, columns: 0.75 },
-  },
-  break: {
-    height: 0.85, spectrumGain: 0.28, complexity: 0.2, chaos: 0.04, flow: 0.4, symmetry: 2,
-    mist: 0.34, spray: 0.05, bloom: 0.7, heat: 0.08, camDist: 39, camHeight: 12.0, fov: 34,
-    forms: { voice: 0.70, harmonic: 0.55, radial: 0.12, rings: 0.6, towers: 0.02, walls: 0.14, arches: 0.05, columns: 0.0 },
-  },
-  outro: {
-    height: 1.0, spectrumGain: 0.3, complexity: 0.22, chaos: 0.04, flow: 0.42, symmetry: 2,
-    mist: 0.35, spray: 0.05, bloom: 0.72, heat: 0.06, camDist: 41, camHeight: 13.0, fov: 33,
-    forms: { voice: 0.85, harmonic: 0.50, radial: 0.14, rings: 0.55, towers: 0.02, walls: 0.12, arches: 0.10, columns: 0.0 },
-  },
-};
+const ANCHORS = [
+  { at: 0.00, height: 0.55, spectrumGain: 0.10, complexity: 0.10, chaos: 0.02, symmetry: 2,
+    mist: 0.20, spray: 0.00, bloom: 0.55, heat: 0.00, camDist: 40, camHeight: 13.0, fov: 34,
+    forms: { voice: 0.20, harmonic: 0.25, radial: 0.06, rings: 0.55, towers: 0.00, walls: 0.10, arches: 0.00, columns: 0.00 } },
+  { at: 0.22, height: 0.95, spectrumGain: 0.30, complexity: 0.24, chaos: 0.05, symmetry: 2,
+    mist: 0.32, spray: 0.03, bloom: 0.72, heat: 0.06, camDist: 38, camHeight: 12.0, fov: 35,
+    forms: { voice: 0.80, harmonic: 0.58, radial: 0.15, rings: 0.60, towers: 0.04, walls: 0.17, arches: 0.05, columns: 0.00 } },
+  { at: 0.48, height: 1.75, spectrumGain: 0.62, complexity: 0.45, chaos: 0.10, symmetry: 2,
+    mist: 0.40, spray: 0.12, bloom: 0.88, heat: 0.20, camDist: 34, camHeight: 11.0, fov: 37,
+    forms: { voice: 1.15, harmonic: 0.85, radial: 0.28, rings: 0.50, towers: 0.18, walls: 0.30, arches: 0.10, columns: 0.10 } },
+  { at: 0.76, height: 2.95, spectrumGain: 1.00, complexity: 0.80, chaos: 0.22, symmetry: 4,
+    mist: 0.70, spray: 0.55, bloom: 1.15, heat: 0.72, camDist: 41, camHeight: 18.0, fov: 41,
+    forms: { voice: 1.25, harmonic: 1.00, radial: 0.45, rings: 0.60, towers: 0.65, walls: 0.40, arches: 0.60, columns: 0.75 } },
+  { at: 1.00, height: 3.30, spectrumGain: 1.15, complexity: 0.95, chaos: 0.40, symmetry: 4,
+    mist: 0.85, spray: 1.00, bloom: 1.35, heat: 1.00, camDist: 43, camHeight: 21.0, fov: 46,
+    forms: { voice: 1.00, harmonic: 1.00, radial: 0.50, rings: 0.75, towers: 0.90, walls: 0.50, arches: 0.45, columns: 0.60 } },
+];
+
+const SCALARS = ['height', 'spectrumGain', 'complexity', 'chaos', 'symmetry',
+  'mist', 'spray', 'bloom', 'heat', 'camDist', 'camHeight', 'fov'];
+
+/** Scratch look, filled each frame so nothing is allocated in the loop. */
+const LOOK = { forms: {} };
+for (const nm of SCALARS) LOOK[nm] = 0;
+
+/**
+ * Interpolate the anchors at `level`, then let `lift` colour it.
+ *
+ * Lift is what a build feels like: rougher, more spray, the camera higher, the
+ * vertical forms pushing up — and the water held slightly BACK, because a build
+ * that is already at full height leaves the release nowhere to go.
+ */
+function blendLook(level, lift) {
+  const t = level < 0 ? 0 : level > 1 ? 1 : level;
+  let i = 0;
+  while (i < ANCHORS.length - 2 && t > ANCHORS[i + 1].at) i++;
+  const a = ANCHORS[i], b = ANCHORS[i + 1];
+  const f = (t - a.at) / (b.at - a.at);
+  for (const nm of SCALARS) LOOK[nm] = a[nm] + (b[nm] - a[nm]) * f;
+  for (const nm in a.forms) LOOK.forms[nm] = a.forms[nm] + (b.forms[nm] - a.forms[nm]) * f;
+
+  LOOK.chaos += lift * 0.20;
+  LOOK.spray += lift * 0.22;
+  LOOK.complexity += lift * 0.22;
+  LOOK.camHeight += lift * 3.2;
+  LOOK.forms.towers += lift * 0.38;
+  LOOK.forms.columns += lift * 0.28;
+  LOOK.height *= 1 - lift * 0.10;
+  return LOOK;
+}
+
+/**
+ * A name for the HUD only. Nothing visual depends on it any more.
+ *
+ * Sticky, because a continuous level crossing a fixed threshold dithers across
+ * it: measured over one song the readout changed 73 times, which is a flicker
+ * rather than a label. The bands have to be left by a clear margin, not merely
+ * touched. This costs nothing — no part of the arena reads it.
+ */
+const LABEL_BANDS = [
+  ['STILL', 0.10], ['QUIET', 0.30], ['FLOW', 0.58], ['LIFT', 0.84], ['PEAK', 2],
+];
+function labelFor(level, lift, sinceDrop, prev) {
+  if (sinceDrop < 3.0) return 'DROP';
+  if (lift > 0.45) return 'BUILD';
+  const M = 0.05;
+  for (let i = 0; i < LABEL_BANDS.length; i++) {
+    const [name, top] = LABEL_BANDS[i];
+    const lo = i === 0 ? -1 : LABEL_BANDS[i - 1][1];
+    // the band you are already in is widened by the margin on both sides
+    const grow = name === prev ? M : -M;
+    if (level > lo - grow && level <= top + grow) return name;
+  }
+  return prev || 'FLOW';
+}
 
 /**
  * Phrase variants — every 8 bars the emphasis rotates, so a repeated chorus
@@ -78,38 +134,41 @@ const PHRASE_VARIANTS = [
 const MAX_HEIGHT = 6.2;
 
 /**
- * Shaping exponent on height.
+ * Shaping exponent on the height driver.
  *
- * Without it the arena spent most of a song pressed against the top of the
- * frame, so the biggest moment had nowhere left to go and every loud passage
- * looked identical. Raising the drive to a power pushes ordinary loudness well
- * down the range and reserves the top for the one moment that earns it: at 1.85
- * a passage driving 60% of maximum renders at 40%, while the true peak still
- * reaches full height.
+ * It reserves the top of the frame for the moment that earns it: a passage at
+ * 60% of full energy renders at about half height, so a drop still has
+ * somewhere to go.
+ *
+ * It used to be 1.85, applied to an eight-term product divided by the ceiling.
+ * That made it an EXPANDER at the bottom of its range, which is exactly where
+ * quiet music lives: a 50% change in a small input became a 2.1x change in
+ * rendered height, so a hushed passage flickered between low and flat. It now
+ * applies to a single normalised 0..1 driver and is much gentler.
  */
-const HEIGHT_GAMMA = 1.85;
+const HEIGHT_GAMMA = 1.35;
 
 /** How long before a planned drop the arena starts building. */
 const BUILD_LEAD = 8.0;
 
 const MAX_IMPULSES = 8;
-const MIN_SECTION_TIME = { silence: 0.5, intro: 1.5, verse: 2.5, build: 1.5, drop: 5.0, chorus: 3.0, break: 2.0, outro: 3.0 };
 
 export class Choreographer {
   constructor() {
-    this.section = 'silence';
-    this.prevSection = 'silence';
+    this.section = 'STILL';
+    this.prevSection = 'STILL';
     this.sectionTime = 0;
     this.time = 0;
     this.phrase = 0;
+    this.level = 0;
 
     this.p = {
-      height: 0.7, spectrumGain: 0.1, complexity: 0.1, chaos: 0.02, flow: 0.3, symmetry: 2,
+      height: 0.7, spectrumGain: 0.1, complexity: 0.1, chaos: 0.02, symmetry: 2,
       mist: 0.2, spray: 0, bloom: 0.55, heat: 0, camDist: 40, camHeight: 13.0, fov: 34,
       forms: new Float32Array(FORM_COUNT),
       eruption: 0, shock: 0, intensity: 0, shake: 0, ringRadius: 9, ringWidth: 7,
       // exposed for the UI
-      section: 'silence', bpm: 0, pace: 0.75, smoothness: 0.5,
+      section: 'STILL', level: 0, bpm: 0, pace: 0.75, smoothness: 0.5,
     };
     this.p.forms[FORM_INDEX.rings] = 0.55;
 
@@ -119,6 +178,7 @@ export class Choreographer {
     this._imp = 0;
 
     this.plan = null;
+    this.identity = null;
     this.events = [];   // consumed each frame by camera / spray
     this.resetTrack();
   }
@@ -130,10 +190,11 @@ export class Choreographer {
    * section state, phrase clock and rolling histories — so it opens mid-chorus
    * with the wrong dynamics for its first half-minute.
    */
-  resetTrack(plan = null) {
+  resetTrack(plan = null, identity = null) {
     this.plan = plan;
-    this.section = 'silence';
-    this.prevSection = 'silence';
+    this.identity = identity;
+    this.section = 'STILL';
+    this.prevSection = 'STILL';
     this.sectionTime = 0;
     this.time = 0;
     this.phrase = -1;
@@ -142,8 +203,6 @@ export class Choreographer {
     this._riseHist = [];
     this._hiHist = [];
     this._sinceDrop = 99;
-    this._buildMinE = 1;     // quietest point of the current build
-    this._buildMaxE = 0;
     this._eMax = 0.05;       // loudest the track has been (slowly forgetting)
     this._sinceSurge = 99;
     this._jump = 0;
@@ -157,6 +216,11 @@ export class Choreographer {
     this._anticipation = 0;
     this._voiceSeen = 0;
     this._firedDrop = -1;
+    this._quietFor = 0;
+    this._energy = 0;
+    this.level = 0;
+    this._lastLevel = 0;
+    this._lastSettle = -999;
     this.events.length = 0;
 
     const p = this.p;
@@ -164,7 +228,7 @@ export class Choreographer {
     p.height = 0.7; p.heat = 0; p.spray = 0;
     for (let i = 0; i < FORM_COUNT; i++) p.forms[i] = 0;
     p.forms[FORM_INDEX.rings] = 0.55;
-    p.section = 'silence';
+    p.section = 'STILL';
   }
 
   /** Emit an expanding wave impulse into the field. */
@@ -181,90 +245,29 @@ export class Choreographer {
     this.impulseB[i * 4 + 3] = 0;
   }
 
-  decideSection(m) {
-    if (!m.playing || m.silence > 0.75) return 'silence';
+  /**
+   * How big this moment is, 0..1, continuously.
+   *
+   * With a plan this is simply the track's own relative level — the number the
+   * old state machine spent forty lines thresholding into labels so it could
+   * look the labels back up in a table. Without a plan (live input) it is
+   * inferred from energy against a slowly-forgetting maximum.
+   */
+  _measureLevel(m) {
+    if (!m.playing || this._quietFor > 0.55) return 0;
 
-    const e = m.energyShort;
-    const el = Math.max(m.energyLong, 0.02);
-
-    // ---- planned structure (the normal path) -------------------------------
     if (this.plan) {
-      const t = m.time;
-      const L = this.plan.relLevelAt(t);      // 0..1 against this track's plateau
-      const toDrop = this._toDrop;
-
-      // A drop the planner found by reading the whole song — the one decision
-      // live analysis could never make reliably. Latched by index so it cannot
-      // be missed between two frames.
-      const di = this.plan.dropIndexBefore(t);
-      if (di >= 0 && di !== this._firedDrop && t - this.plan.dropTime(di) < 2.5) {
-        this._firedDrop = di;
-        return 'drop';
-      }
-      if (this.section === 'drop' && this.sectionTime < 5.5) return 'drop';
-
-      if (m.progress > 0.86 && L < 0.62) return 'outro';
-      if (L < 0.30) return t < 24 ? 'intro' : 'break';
-
-      // The run-up to a known drop IS the build — including the part where the
-      // kick drops out and the level actually falls, which no rising-energy
-      // test can catch.
-      if (toDrop !== null && toDrop <= BUILD_LEAD) return 'build';
-
-      if (L < 0.46) return t < 24 ? 'intro' : 'break';
-      if (L > 0.86) return 'chorus';
-      if (this._sinceDrop < 16 && L > 0.70) return 'chorus';
-      if (L > 0.50) return 'verse';
-      return 'break';
+      const L = this.plan.relLevelAt(m.time);
+      // An outro should settle even if its level holds up.
+      const fade = m.progress > 0.90 ? 1 - (m.progress - 0.90) * 4.0 : 1;
+      return clamp01(L * Math.max(0.45, fade));
     }
 
-    // ---- fallback: live-only inference (no plan available) -----------------
-    const ratio = e / el;
-    const loud = e > 0.52 && e > this._eMax * 0.85;
-    if (m.time > 16 && this._sinceDrop > 8 && loud && m.bass > 0.55 && m.kick > 0.22 &&
-        (this._jump > 0.15 || this._buildRelease(m, e))) {
-      return 'drop';
-    }
-    if (this.section === 'drop' && this.sectionTime < 5.5) return 'drop';
-    if (m.progress > 0.87 && e < el * 1.02 && e < 0.45) return 'outro';
-    if (e < 0.30 && m.time < 22 && this._sinceDrop > 20) return 'intro';
-    if (e < 0.13) return 'break';
-    if (e < 0.26 && m.beatDensity < 1.6) return 'break';
-    if (this._sinceDrop < 24 && e > 0.42) return 'chorus';
-    if (this.section === 'build' && this.sectionTime < 10 && e > this._buildMaxE * 0.90 && e > 0.16) {
-      return 'build';
-    }
-    if (this._sinceDrop > 12 && (this._sustainedRise() || this._brightRise())
-        && e > 0.16 && e < 0.88 && m.beatDensity > 1.4) {
-      return 'build';
-    }
-    if (e > 0.58 && ratio > 1.02) return 'chorus';
-    if (e > 0.2) return 'verse';
-    return 'break';
+    // live: energy against what this input has recently reached
+    const e = m.energyShort;
+    return clamp01(e / Math.max(0.12, this._eMax * 0.92));
   }
 
-  /**
-   * Low end arriving hard after an absence. The comparison window is several
-   * seconds wide on purpose: a build usually still has bass in it, so a short
-   * window sees no change and the drop goes undetected.
-   */
-  _bassSurge(m) {
-    const h = this._bassHist;
-    if (h.length < 180) return false;
-    const recent = avg(h.slice(-10));            // ~0.2 s
-    const before = avg(h.slice(0, 100));         // ~3-4 s ago
-    return recent > 0.55 && recent > before * 1.45 && m.kick > 0.22;
-  }
-
-  /**
-   * The other, more reliable signature: we have been building, and the music
-   * just jumped clear of everything that build contained.
-   */
-  _buildRelease(m, e) {
-    return this.section === 'build'
-      && this.sectionTime > 2.0
-      && e > Math.max(0.60, this._buildMinE + 0.16);
-  }
 
   /** Energy climbing steadily over ~5 s — the signature of a build. */
   _sustainedRise() {
@@ -273,12 +276,6 @@ export class Choreographer {
     return avg(h.slice(-60)) - avg(h.slice(0, 60)) > 0.020;
   }
 
-  /** Top end opening up — risers, hat rolls, filter sweeps. */
-  _brightRise() {
-    const h = this._hiHist;
-    if (h.length < 200) return false;
-    return avg(h.slice(-60)) - avg(h.slice(0, 60)) > 0.045;
-  }
 
   update(dt, m) {
     this.time += dt;                 // render clock — only for shader impulse rebasing
@@ -304,6 +301,13 @@ export class Choreographer {
     const wallNow = performance.now() / 1000;
     const wallDt = this._lastWall ? Math.max(0, wallNow - this._lastWall) : 0;
     this._lastWall = wallNow;
+    // Real elapsed time, for every exponential smoothing in this method.
+    // Declared here rather than beside the parameter morphing because the
+    // continuous level and lift are smoothed too, and they are decided first.
+    const sdt = Math.min(0.5, wallDt > 0 ? wallDt : dt);
+    // Real elapsed time, for every exponential smoothing in this method.
+    // Declared here rather than beside the parameter morphing because the
+    // continuous level and lift are smoothed too, and they are decided first.
     const drift = m.time - this._lastTime;
     const isSeek = drift < -0.35 || drift > wallDt + 0.5;
 
@@ -323,16 +327,17 @@ export class Choreographer {
     this._lastTime = m.time;
     if (this._seekGuard > 0) this._seekGuard -= dt;
 
+    // How long the track has been quiet, in music time. Reset the instant sound
+    // returns, so the arena wakes on the first frame of a re-entry even though
+    // it took half a second to accept that it had stopped.
+    this._quietFor = (m.silence > 0.75) ? this._quietFor + dt : 0;
+
     this._riseHist.push(m.energyShort);
     if (this._riseHist.length > 300) this._riseHist.shift();     // ~5 s
     this._hiHist.push(m.highs);
     if (this._hiHist.length > 300) this._hiHist.shift();
     this._bassHist.push(m.bass);
     if (this._bassHist.length > 260) this._bassHist.shift();      // ~4 s
-    if (this.section === 'build') {
-      this._buildMinE = Math.min(this._buildMinE, m.energyShort);
-      this._buildMaxE = Math.max(this._buildMaxE, m.energyShort);
-    }
     // ~35 s half-life: a later, bigger drop can still clear the bar
     this._eMax = Math.max(m.energyShort, this._eMax * Math.exp(-dt * 0.02));
 
@@ -343,26 +348,24 @@ export class Choreographer {
       ? m.energyShort - avg(this._riseHist.slice(-96, -60))
       : 0;
 
-    // ---- section machine with minimum dwell times -------------------------
+    // ---- continuous structure ---------------------------------------------
     this._toDrop = this.plan ? this.plan.timeToNextDrop(m.time) : null;
-    this._anticipation = this._toDrop !== null && this._toDrop <= BUILD_LEAD
+    const liftTarget = this._toDrop !== null && this._toDrop <= BUILD_LEAD
       ? clamp01(1 - this._toDrop / BUILD_LEAD)
-      : (this.section === 'build' ? Math.min(1, this.sectionTime / 9) : 0);
+      : (this._sustainedRise() ? 0.45 : 0);
+    this._anticipation += (liftTarget - this._anticipation) * (1 - Math.exp(-sdt * 0.9));
 
-    const want = this.decideSection(m);
-    // A drop overrides the minimum dwell time: it is the one moment in a song
-    // that must land on the beat it belongs to, not two seconds later. Silence
-    // overrides it too, or the arena keeps erupting after the audio has stopped.
-    const mayChange = want === 'drop' || want === 'silence'
-      || this.sectionTime >= (MIN_SECTION_TIME[this.section] || 2);
-    if (want !== this.section && mayChange) {
-      this.prevSection = this.section;
-      this.section = want;
-      this._sectionStart = now;
-      this.sectionTime = 0;
-      if (want === 'build') { this._buildMinE = m.energyShort; this._buildMaxE = m.energyShort; }
-      this.events.push({ type: 'section', from: this.prevSection, to: want });
-      if (want === 'drop') {
+    // Level is smoothed here rather than thresholded. This is the whole of what
+    // used to be a state machine with dwell times and hysteresis bands.
+    const levelTarget = this._measureLevel(m);
+    this.level += (levelTarget - this.level) * (1 - Math.exp(-sdt * (levelTarget > this.level ? 0.85 : 0.5)));
+
+    // A drop is still an EVENT — a moment, not a region. It is the one thing in
+    // a song that has to land on the beat it belongs to.
+    if (this.plan) {
+      const di = this.plan.dropIndexBefore(m.time);
+      if (di >= 0 && di !== this._firedDrop && m.time - this.plan.dropTime(di) < 2.5) {
+        this._firedDrop = di;
         this._lastDropTime = now;
         this._lastSurgeTime = now;
         this._sinceDrop = 0;
@@ -372,9 +375,24 @@ export class Choreographer {
         this.emit(0, 0, 2.6, 11, 8.0, 2);
         this.events.push({ type: 'drop' });
       }
-      if (want === 'break' || want === 'silence' || want === 'outro') {
-        this.events.push({ type: 'settle' });
-      }
+    }
+
+    // Camera language still wants to know when the arena has settled or surged,
+    // so those are derived from the level's own movement rather than from a
+    // label having changed.
+    const dL = this.level - this._lastLevel;
+    this._lastLevel = this.level;
+    if (dL < -0.010 && this.level < 0.34 && now - this._lastSettle > 9) {
+      this._lastSettle = now;
+      this.events.push({ type: 'settle' });
+    }
+
+    const label = labelFor(this.level, this._anticipation, this._sinceDrop, this.section);
+    if (label !== this.section) {
+      this.prevSection = this.section;
+      this.section = label;
+      this._sectionStart = now;
+      this.events.push({ type: 'section', from: this.prevSection, to: label });
     }
 
     // A sung phrase arriving is an event. It is a lift, not a strike: broad
@@ -398,7 +416,7 @@ export class Choreographer {
     // the section machine: whether or not we labelled it a drop, the arena
     // should answer a structural moment with a coordinated wave event.
     if (this._sinceSurge > 5.5 && this._seekGuard <= 0 && this._jump > 0.11
-        && m.energyShort > 0.42 && this.section !== 'drop') {
+        && m.energyShort > 0.42 && this._sinceDrop > 3.0) {
       this._lastSurgeTime = now;
       this._sinceSurge = 0;
       this.p.eruption = Math.max(this.p.eruption, Math.min(0.75, this._jump * 3.2));
@@ -415,7 +433,7 @@ export class Choreographer {
 
     // ---- discrete wave events ---------------------------------------------
     if (m.onset) {
-      const hot = this.section === 'drop' || this.section === 'chorus';
+      const hot = this.level > 0.70;
       if (m.onset.kick) {
         // Kick: forward shockwave from the heart of the arena.
         // A heavy low hit should read as weight, not as a ripple. More bass
@@ -440,22 +458,20 @@ export class Choreographer {
     }
 
     // ---- eruption / shock envelopes ----------------------------------------
-    const sdtEnv = Math.min(0.5, wallDt > 0 ? wallDt : dt);
-    this.p.eruption *= Math.exp(-sdtEnv * 0.85);
-    this.p.shock = Math.max(this.p.shock * Math.exp(-sdtEnv * 5.0), m.beatPulse * (this.section === 'drop' ? 1 : 0.55));
-    this.p.shake *= Math.exp(-sdtEnv * 1.9);
+    this.p.eruption *= Math.exp(-sdt * 0.85);
+    this.p.shock = Math.max(this.p.shock * Math.exp(-sdt * 5.0), m.beatPulse * (0.55 + this.level * 0.45));
+    this.p.shake *= Math.exp(-sdt * 1.9);
 
     // ---- parameter morphing -------------------------------------------------
     // Smoothing uses REAL elapsed time. Exponential smoothing is stable for any
     // step, so there is no reason to feed it the clamped simulation dt — doing
     // so made every look converge in slow motion whenever frames were dropped.
-    const sdt = Math.min(0.5, wallDt > 0 ? wallDt : dt);
-    const look = LOOKS[this.section] || LOOKS.verse;
-    const entering = Math.min(1, this.sectionTime / 1.4);
+    const look = blendLook(this.level, this._anticipation);
+    const entering = 1;   // nothing steps any more, so nothing needs easing in
     // Sections that must hit hard morph fast; settling morphs slowly.
-    const fast = this.section === 'drop' ? 9 : this.section === 'build' ? 2.2 : 1.5;
-    const slow = 0.9;
-    const rate = (this.section === 'break' || this.section === 'silence' || this.section === 'outro') ? slow : fast;
+    // One rate. The look itself is already continuous, so the only thing this
+    // smoothing still has to do is keep live modulation from jittering.
+    const rate = 1.6 + this.p.eruption * 6.0;
     const k = 1 - Math.exp(-sdt * rate);
     const p = this.p;
 
@@ -471,12 +487,87 @@ export class Choreographer {
     // land at the same RMS as the verse that preceded it — modern masters are
     // compressed flat. Vocal effort therefore drives height alongside level,
     // and the arena eases back in the breath between phrases.
+    // ---- ONE driver ------------------------------------------------------
+    //
+    // Height used to be the product of eight terms — section, loudness, voice,
+    // build, bass, eruption, breath and arousal — then raised to a power. Every
+    // one was individually defensible and the result was unpredictable, because
+    // multiplication compounds: when three drifted down together the water went
+    // flat, and no single term looked wrong when you inspected it. Nothing was
+    // in charge, so nothing could be reasoned about.
+    //
+    // Now one number decides how big the water is. Loudness and vocal effort
+    // are combined into it BEFORE anything else sees them — a sung line and a
+    // loud band are two ways of saying the same thing, so whichever is carrying
+    // the music wins — and it is smoothed on its own clock so it cannot
+    // flicker. Everything else either sets its range or adds to it.
+    //
+    // THE VOICE DELTA. In studio the loud band and the sung line are weighted
+    // as equals and whichever is carrying the music wins. Here the singer IS
+    // the music: their line is worth more than the mix behind it, so a belt
+    // over a thin arrangement raises the water further than a full band
+    // playing at the same RMS. The band alone still moves it -- an
+    // instrumental passage is not silence -- but it moves it less.
+    // The singer leads by weight (1.18 against 0.80), and the top of the range
+    // is compressed rather than clipped.
+    //
+    // clamp01 was the wrong tool here. Giving the voice a gain above 1 is what
+    // makes it lead, but it also pushes the sum past the ceiling on anything
+    // loud and sung hard, and a hard clip there does not just limit the peak --
+    // it deletes every difference above it, so the water stops answering the
+    // song exactly where the song is doing the most. A soft knee keeps the
+    // ordering intact all the way up: 0.9 and 1.4 still render differently.
+    //
+    // Below the knee nothing is touched, because the quiet end was never the
+    // problem and height goes as energy^1.35, which is least sensitive there --
+    // scaling the whole driver down to make room at the top cost a ballad its
+    // range (measured: tumhiho 0.21 -> 0.08) to fix a problem it did not have.
     const vx = m.voice;
-    const vocalDrive = vx ? vx.presence * (0.3 + vx.effort * 1.0) : 0;
-    const breath = vx ? 1 - vx.gap * 0.22 * this._voiceSeen : 1;
-    const heightDrive = (look.height * (0.6 + Math.max(m.amplitude * 0.62, vocalDrive * 0.78))
-      * (1 + buildRamp * 0.32) + m.bass * 0.85 + this.p.eruption * 1.5) * breath;
-    const wantHeight = MAX_HEIGHT * Math.pow(clamp01(heightDrive / MAX_HEIGHT), HEIGHT_GAMMA);
+    const vocal = vx ? vx.presence * (0.35 + vx.effort * 0.85) : 0;
+    const vDrive = Math.max(m.amplitude * 0.80, vocal * 1.18);
+    const KNEE = 0.75;
+    const rawEnergy = vDrive <= KNEE
+      ? vDrive
+      : KNEE + (1 - Math.exp(-(vDrive - KNEE) * 2.6)) * (1 - KNEE);
+    this._energy += (rawEnergy - this._energy) * (1 - Math.exp(-sdt * 2.4));
+
+    // The arena eases back in the breath between phrases. This is the single
+    // gesture that makes water look like it is listening to a singer rather
+    // than to a waveform, and it is why this variant exists.
+    //
+    // It SUBTRACTS rather than multiplying, and only once a voice has actually
+    // been heard in the track (_voiceSeen), so an instrumental is never
+    // quietly shrunk by a singer who was never there. Capped, because a long
+    // gap must not be able to cancel the floor the section guarantees.
+    const breathDip = vx ? Math.min(0.42, vx.gap * 0.30 * this._voiceSeen) : 0;
+    // How activated the SONG is, not just this moment in it.
+    //
+    // Section and height came only from level relative to the track's own
+    // plateau, which is self-normalising: a hushed acoustic cover holds its
+    // level as steadily as a rock chorus does, so it was handed the same crest
+    // heights and the same heat, towered to two thirds of the ceiling and blew
+    // the frame out. Loudness relative to itself cannot tell a calm record from
+    // a driving one. Arousal can, and it is known before the first frame.
+    // The section sets a FLOOR and a CEILING rather than a multiplier, so the
+    // water has a size it can never fall below while that section lasts. A
+    // multiplier can always be driven to zero by whatever is multiplying it;
+    // a floor cannot, which is what stops quiet passages going completely flat.
+    const lo = look.height * 0.46;
+    const hi = look.height * 1.62;
+    let hWant = lo + (hi - lo) * Math.pow(this._energy, HEIGHT_GAMMA);
+
+    // Accents ADD. A kick or a drop should lift the water by a knowable amount
+    // regardless of how loud the passage already is — as a multiplier the same
+    // kick did nothing in a quiet verse and threw the surface through the roof
+    // in a chorus.
+    hWant += this.p.eruption * 1.25 + m.bass * 0.22 + buildRamp * 0.30;
+    hWant = Math.max(lo * 0.75, hWant - breathDip);
+
+    // One song-level scale, known before the first frame: a calm record is
+    // physically smaller water than a driving one.
+    hWant *= this.identity ? (0.62 + this.identity.arousal * 0.52) : 1;
+
+    const wantHeight = Math.min(MAX_HEIGHT, hWant);
     p.height += (wantHeight - p.height) * k;
     p.spectrumGain += (look.spectrumGain * (0.65 + m.amplitude * 0.7) - p.spectrumGain) * k;
     p.complexity += (look.complexity * (1 + buildRamp * 0.5) + m.highs * 0.25 - p.complexity) * k;
@@ -484,20 +575,19 @@ export class Choreographer {
     // even at the same loudness as a sweet one.
     const harshness = m.harmony ? Math.max(0, -m.harmony.consonance) * m.harmony.tonalness : 0;
     p.chaos += (look.chaos * (1 + buildRamp) + m.highs * 0.12 + harshness * 0.16 - p.chaos) * k;
-    // Flow follows the music's PACE, not its volume. Keying it to energy meant
-    // a slow song swept along the moment it grew — the waves outrunning the
-    // music is the fastest way to break the feeling that they belong to it.
-    // Smooth, sustained material is damped further still.
-    const paceFlow = 0.25 + (m.pace || 0.75) * 0.85;
-    const legato = 1 - (m.smoothness || 0.5) * 0.40;
-    p.flow += (look.flow * paceFlow * legato - p.flow) * k;
+    // There is no `flow` any more. How fast the water moves is now a
+    // consequence of how long its waves are, decided from the song's tempo in
+    // WaterArena and resolved by omega = sqrt(g*k) in the shader. A section
+    // cannot make water travel faster, because loudness does not do that to
+    // water. It only makes the waves bigger.
     p.symmetry += (look.symmetry - p.symmetry) * (1 - Math.exp(-sdt * 0.8));
     p.mist += (look.mist * (0.7 + m.amplitude * 0.6) - p.mist) * (1 - Math.exp(-sdt * 1.1));
     p.spray += (look.spray * (0.4 + m.beatPulse * 1.2) - p.spray) * (1 - Math.exp(-sdt * 3.5));
     p.bloom += (look.bloom * (0.85 + m.amplitude * 0.35) - p.bloom) * (1 - Math.exp(-sdt * 1.6));
     // a belt brightens the water the way it brightens the mix
-    const wantHeat = Math.min(1.02, look.heat * (0.6 + m.energyShort * 0.8)
-      + this.p.eruption * 0.5 + (vx ? vx.presence * vx.effort * 0.28 : 0));
+    const wantHeat = Math.min(1.02, (look.heat * (0.6 + m.energyShort * 0.8)
+      + this.p.eruption * 0.5 + (vx ? vx.presence * vx.effort * 0.28 : 0))
+      * (this.identity ? 0.58 + this.identity.arousal * 0.52 : 1));
     p.heat += (wantHeat - p.heat) * (1 - Math.exp(-sdt * 2.0));
     // Frame the water we actually have, not the water the section nominally wants.
     // Headroom: the frame should always have room above the water, so the one
@@ -530,18 +620,23 @@ export class Choreographer {
       // harmonic form was suppressed right when it mattered. A confident lead
       // vocal is itself proof the music is pitched.
       const pitched = Math.max(tonalness, presence * 0.9);
-      if (name === 'harmonic') target *= 0.35 + pitched * 1.05;
-      if (name === 'voice') target *= 0.12 + presence * 1.38;
-      if (name === 'towers') target *= 0.6 + m.bass * 0.9;
-      if (name === 'columns') target *= 0.6 + m.mids * 0.9;
-      if (name === 'arches') target *= 0.6 + m.highs * 0.8;
-      if (name === 'walls') target *= 0.7 + m.mids * 0.6;
+      // The voice variant reads the pitched forms harder and the percussive
+      // ones softer, so the shape of the surface follows the melody rather
+      // than the drum kit. These multipliers are the only difference from
+      // studio -- the forms themselves are identical.
+      if (name === 'harmonic') target *= 0.42 + pitched * 1.20;
+      if (name === 'voice') target *= 0.15 + presence * 1.85;
+      if (name === 'towers') target *= 0.50 + m.bass * 0.72;
+      if (name === 'columns') target *= 0.60 + m.mids * 0.90;
+      if (name === 'arches') target *= 0.60 + m.highs * 0.80;
+      if (name === 'walls') target *= 0.58 + m.mids * 0.50;
       p.forms[idx] += (Math.min(1.4, target) * entering - p.forms[idx]) * fk;
     }
 
     p.intensity += (clamp01(m.energyShort * 0.7 + m.amplitude * 0.3 + this.p.eruption * 0.5) - p.intensity)
       * (1 - Math.exp(-sdt * 2.2));
     p.section = this.section;
+    p.level = this.level;
     p.bpm = m.bpm;
     p.pace = m.pace || 0.75;
     p.smoothness = m.smoothness || 0.5;

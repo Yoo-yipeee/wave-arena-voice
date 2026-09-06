@@ -3,6 +3,7 @@ import { createFieldUniforms } from './shaders/field.js';
 import {
   SURFACE_VERT, SURFACE_FRAG, LINE_VERT, LINE_FRAG,
   POINTS_VERT, POINTS_FRAG, BACKDROP_VERT, BACKDROP_FRAG,
+  CAUSTIC_VERT, CAUSTIC_FRAG,
 } from './shaders/materials.js';
 import { SPECTRUM_BINS } from '../analysis/MusicAnalyser.js';
 import { FORM_COUNT } from '../performance/Primitives.js';
@@ -16,20 +17,6 @@ const PALETTE = {
   glow: new THREE.Color(0x06243f),
 };
 
-/**
- * The song's water colour, as a blue-family bilinear blend over
- * (mode: minor..major) x (brightness: dark..bright).
- *
- * Deliberately one hue family: every track should still read as WAVE ARENA.
- * Songs separate themselves through shape, motion and material — harmony only
- * shifts the tone within the family.
- */
-const TONE = {
-  minorDark:   new THREE.Color(0x0a3a68),   // deep indigo
-  minorBright: new THREE.Color(0x1273c4),   // steel blue
-  majorDark:   new THREE.Color(0x1a86c8),   // muted aqua
-  majorBright: new THREE.Color(0x37c8e8),   // aqua
-};
 
 /**
  * WaterArena — every renderable in the performance.
@@ -54,18 +41,14 @@ export class WaterArena {
     this.spectrumTex.wrapS = THREE.ClampToEdgeWrapping;
     this.spectrumTex.needsUpdate = true;
 
-    // 12 pitch classes, wrapped so pc 11 is adjacent to pc 0 on the circle
-    this.chromaData = new Uint8Array(12);
-    this.chromaTex = new THREE.DataTexture(this.chromaData, 12, 1, THREE.RedFormat);
-    this.chromaTex.minFilter = THREE.LinearFilter;
-    this.chromaTex.magFilter = THREE.LinearFilter;
-    this.chromaTex.wrapS = THREE.RepeatWrapping;
-    this.chromaTex.needsUpdate = true;
-
-    this.U = createFieldUniforms(THREE, this.spectrumTex, this.chromaTex, this.radius);
+    this.U = createFieldUniforms(THREE, this.spectrumTex, this.radius);
+    // 12 pitch classes. A plain uniform array, not a texture — see field.js.
+    this.chromaData = this.U.uChromaV.value;
     this._tone = PALETTE.mid.clone();
     this._toneTarget = PALETTE.mid.clone();
-    this._toneScratch = PALETTE.mid.clone();
+    this._foamC = new THREE.Color(0xdff2ff);
+    this.identity = null;
+    this._pal = null;
 
     // ---- shared polar geometry ---------------------------------------------
     const { positionAttr, triIndex, lineIndex } = buildPolarDisc(rings, segments, this.radius, lineStep);
@@ -88,6 +71,10 @@ export class WaterArena {
       uHot: { value: PALETTE.hot.clone() },
       uOpacity: { value: 0.9 },
       uHeat: { value: 0 },
+      uGloss: { value: 0.6 },
+      uFoamC: { value: new THREE.Color(0xdff2ff) },
+      uFoamAmt: { value: 0.85 },
+      uSSS: { value: 0.9 },
       uReflect: { value: reflect },
     });
     const lineUniforms = (reflect) => Object.assign({}, this.U, {
@@ -175,6 +162,33 @@ export class WaterArena {
     this.mist.frustumCulled = false;
     this.mist.renderOrder = 3;
 
+    // ---- caustics on the floor ---------------------------------------------
+    // Light focused through the surface onto the bottom. It puts something
+    // BELOW the water instead of only a mirror, which is most of what makes a
+    // pool read as having depth rather than being a sheet.
+    // The caustic vertex shader evaluates the height field FIVE times per
+    // vertex to take a laplacian, so this grid is the single most expensive
+    // number in the arena: at 168 it cost more field evaluations than the water
+    // body itself. The result is a soft, blurred, additive pattern, so a coarser
+    // grid is very nearly invisible and pays for itself several times over.
+    const cGrid = quality.causticGrid || (quality.tier === 'low' ? 80 : 112);
+    const cGeo = new THREE.PlaneGeometry(this.radius * 2.3, this.radius * 2.3, cGrid, cGrid);
+    cGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), this.radius * 3);
+    this.causticMat = new THREE.ShaderMaterial({
+      uniforms: Object.assign({}, this.U, {
+        uFloorY: { value: -7.5 },
+        uCausticGain: { value: 2.2 },
+        uCausticAmt: { value: 0.5 },
+        uCausticC: { value: new THREE.Color(0x9fd9ff) },
+      }),
+      vertexShader: CAUSTIC_VERT, fragmentShader: CAUSTIC_FRAG,
+      transparent: true, depthWrite: false, depthTest: true,
+      blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    });
+    this.caustics = new THREE.Mesh(cGeo, this.causticMat);
+    this.caustics.frustumCulled = false;
+    this.caustics.renderOrder = -0.5;
+
     // ---- backdrop -----------------------------------------------------------
     this.backdropMat = new THREE.ShaderMaterial({
       uniforms: {
@@ -190,11 +204,37 @@ export class WaterArena {
     this.backdrop = new THREE.Mesh(new THREE.SphereGeometry(400, 32, 24), this.backdropMat);
     this.backdrop.renderOrder = -1;
 
-    scene.add(this.backdrop, this.bodyRefl, this.linesRefl, this.body, this.lines, this.mist);
+    scene.add(this.backdrop, this.caustics, this.bodyRefl, this.linesRefl, this.body, this.lines, this.mist);
 
   }
 
   setPixelRatio(pr) { this.mistMat.uniforms.uPixelRatio.value = pr; }
+
+  /**
+   * Visibility has two independent owners: the viewer, who picked a setting,
+   * and the governor, which is trying to hold the frame rate. Both have to
+   * agree before something is drawn, or whichever spoke last wins and toggling
+   * a setting silently undoes a performance decision (or the reverse).
+   */
+  setCausticsAllowed(on) { this._causticsOk = on; this._syncVisibility(); }
+  setCausticsWanted(on) { this._causticsWant = on; this._syncVisibility(); }
+  setReflectionAllowed(on) { this._reflectOk = on; this._syncVisibility(); }
+
+  _syncVisibility() {
+    this.caustics.visible = this._causticsOk !== false && this._causticsWant !== false;
+    const r = this._reflectOk !== false;
+    this.bodyRefl.visible = r;
+    this.linesRefl.visible = r;
+  }
+
+  /** Hand the arena the song's world. */
+  setIdentity(identity) {
+    this.identity = identity;
+    this._pal = identity.palette();
+    const m = identity.material();
+    // A wide, dynamic record earns a wider pool; a broken one foams more.
+    this.mistMat.uniforms.uSize.value = this.quality.particleSize * (0.8 + m.spray * 0.7);
+  }
 
   /** Push a frame of music + choreography into the field. */
   update(dt, music, perf, awake, dtSmooth = dt) {
@@ -202,25 +242,47 @@ export class WaterArena {
     U.uTime.value += dt;
 
     U.uAmp.value = music.amplitude;
-    U.uBass.value = music.bass;
     U.uMids.value = music.mids;
     U.uHighs.value = music.highs;
-    U.uAir.value = music.air;
-    U.uBeat.value = music.beat;
-    U.uBeatPulse.value = music.beatPulse;
-    U.uBeatPhase.value = music.beatPhase;
 
     // perf.height is already in world units — the field is normalised so this
     // is simply "how tall are the crests right now".
     U.uScale.value = perf.height;
-    U.uSpectrumGain.value = perf.spectrumGain;
     U.uComplexity.value = perf.complexity;
     U.uChaos.value = perf.chaos;
-    U.uFlow.value = perf.flow;
-    U.uPace.value += ((perf.pace || 0.75) - U.uPace.value) * (1 - Math.exp(-dt * 0.6));
-    U.uSymmetry.value = perf.symmetry;
+    // ---- how the water moves, from the tempo alone -------------------------
+    //
+    // Wave motion is a property of the SONG, not of the moment. Energy changes
+    // how BIG the waves are; it does not change how fast water travels, any
+    // more than shouting makes the sea quicker. Driving speed from a live
+    // per-frame reading is what let a chorus outrun its own verse and what let
+    // a 63 BPM ballad move faster than a 125 BPM rock track.
+    //
+    // Two numbers, both from tempo, both held steady for the whole song:
+    //
+    //   uLambda   how long the waves are. Slow song, long waves.
+    //   uGravity  chosen so the dominant swell takes exactly TWO BEATS to pass.
+    //
+    // Everything else follows from omega = sqrt(g*k) in the shader, so the
+    // whole surface is automatically coherent: the long swells roll at the
+    // song's pulse and the small chop rides on top at its own correct rate.
+    // How long one swell takes. SongIdentity decides this, because it knows how
+    // far to trust its own tempo: measured across fifteen records, tempo is
+    // right when the pulse is strong and close to arbitrary when it is not, so
+    // a loose ballad takes its motion from arousal instead of from a number its
+    // own autocorrelation could not find.
+    const swellT = this.identity ? this.identity.swellSeconds
+      : (music.bpm > 40 ? (60 / music.bpm) * 2 : 1.6);
+    // Longer swells for slower water, so a calm song moves in broad shapes
+    // rather than the same chop dragged out.
+    const lam = Math.min(1.55, Math.max(0.72, 0.55 + swellT * 0.52));
+    const w0 = (2 * Math.PI) / swellT;
+    const lam0 = 15.0 * lam;                       // the dominant swell
+    const grav = w0 * w0 * lam0 / (2 * Math.PI);   // invert omega = sqrt(g*k)
+
+    U.uLambda.value += (lam - U.uLambda.value) * (1 - Math.exp(-dt * 0.5));
+    U.uGravity.value += (grav - U.uGravity.value) * (1 - Math.exp(-dt * 0.5));
     U.uRingRadius.value = perf.ringRadius;
-    U.uRingWidth.value = perf.ringWidth;
     U.uEruption.value = perf.eruption;
     U.uShock.value = perf.shock;
     U.uAwake.value = awake;
@@ -238,34 +300,91 @@ export class WaterArena {
     if (h) {
       const c = h.chroma;
       for (let i = 0; i < 12; i++) {
-        this.chromaData[i] = Math.max(0, Math.min(255, c[i] * 255)) | 0;
+        this.chromaData[i] = Math.max(0, Math.min(1, c[i]));
       }
-      this.chromaTex.needsUpdate = true;
 
       // Assigned, not interpolated: the tonic is circular, so easing from 11.9
       // to 0.1 would sweep the long way round and visibly spin the arena. It is
       // already smoothed around the circle inside HarmonyAnalyser.
       U.uTonic.value = h.tonic;
       U.uMode.value += (h.mode - U.uMode.value) * (1 - Math.exp(-dt * 0.8));
-      U.uConsonance.value += (h.consonance - U.uConsonance.value) * (1 - Math.exp(-dt * 1.5));
-      U.uHarmChange.value = h.change;
 
-      // tone: bilinear over (mode, brightness), inside the blue family
-      const maj = h.mode * 0.5 + 0.5;
-      const bright = Math.min(1, music.highs * 0.55 + music.mids * 0.3 + h.tonalness * 0.3);
-      this._toneScratch.copy(TONE.majorDark).lerp(TONE.majorBright, bright);
-      this._toneTarget
-        .copy(TONE.minorDark).lerp(TONE.minorBright, bright)
-        .lerp(this._toneScratch, maj);
-      this._tone.lerp(this._toneTarget, 1 - Math.exp(-dt * 0.5));
+      // Colour comes from the song's identity, not from the moment. The live
+      // reading only nudges lightness, so the world stays recognisably itself
+      // while still breathing with the music.
+    }
 
-      this.bodyMat.uniforms.uMid.value.copy(this._tone);
-      this.bodyReflMat.uniforms.uMid.value.copy(this._tone);
-      this.lineMat.uniforms.uMid.value.copy(this._tone);
-      this.lineReflMat.uniforms.uMid.value.copy(this._tone);
+    if (this.identity) {
+      const p2 = this._pal;
+      const lift = 0.82 + perf.intensity * 0.35;
+      this._toneTarget.setRGB(p2.mid.r * lift, p2.mid.g * lift, p2.mid.b * lift);
+      this._tone.lerp(this._toneTarget, 1 - Math.exp(-dt * 0.6));
+
+      for (const mat of [this.bodyMat, this.bodyReflMat, this.lineMat, this.lineReflMat]) {
+        mat.uniforms.uMid.value.copy(this._tone);
+      }
+      this.bodyMat.uniforms.uDeep.value.setRGB(p2.deep.r, p2.deep.g, p2.deep.b);
+      this.bodyReflMat.uniforms.uDeep.value.setRGB(p2.deep.r, p2.deep.g, p2.deep.b);
+      for (const mat of [this.bodyMat, this.bodyReflMat, this.lineMat, this.lineReflMat]) {
+        mat.uniforms.uHot.value.setRGB(p2.hot.r, p2.hot.g, p2.hot.b);
+      }
+      this.backdropMat.uniforms.uGlow.value.setRGB(p2.glow.r, p2.glow.g, p2.glow.b);
+      this.mistMat.uniforms.uHotC.value.setRGB(p2.hot.r, p2.hot.g, p2.hot.b);
+      this.mistMat.uniforms.uMidC.value.setRGB(p2.mid.r, p2.mid.g, p2.mid.b);
+      this.causticMat.uniforms.uCausticC.value.setRGB(
+        p2.mid.r * 0.9 + 0.1, p2.mid.g * 0.9 + 0.1, p2.mid.b * 0.9 + 0.1);
+
+      const mm = this.identity.material();
+      U.uGrain.value = mm.roughness;
+      U.uSpread.value = mm.spread;
+
+      // How far this song's waves carry. A sustained, legato record sends a
+      // swell clear across the pool; a dry percussive one has its energy die
+      // close to where it landed.
+      const ph = this.identity.physics();
+      U.uDamp.value += (ph.damping - U.uDamp.value) * (1 - Math.exp(-dt * 0.5));
+      U.uRingDecay.value += (ph.ringDecay - U.uRingDecay.value) * (1 - Math.exp(-dt * 0.5));
+
+      // A harsh, strained record has rougher water for its whole length, not
+      // only in the moments where the live analyser happens to catch a
+      // dissonance. Tension is a property of the song, so it belongs here with
+      // the rest of the identity rather than in the frame-by-frame reading.
+      U.uChaos.value = Math.min(1.2, U.uChaos.value + this.identity.tension * 0.40);
+      this.bodyMat.uniforms.uGloss.value = mm.glassiness;
+      this.bodyReflMat.uniforms.uGloss.value = mm.glassiness;
+
+      // Foam tinted just off the water's own colour rather than pure white, so
+      // it belongs to the song's world instead of sitting on top of it.
+      const p3 = this._pal;
+      // Foam keeps more of the song's colour than it used to. Real whitewater
+      // is white, but pushing it 45% of the way to pure white meant the
+      // brightest, most eye-catching part of the frame was identical on every
+      // track, and on a warm palette it dragged the whole surface grey.
+      this._foamC.setRGB(
+        Math.min(1, p3.hot.r * 0.74 + 0.26),
+        Math.min(1, p3.hot.g * 0.74 + 0.26),
+        Math.min(1, p3.hot.b * 0.74 + 0.26),
+      );
+      for (const mat of [this.bodyMat, this.bodyReflMat]) {
+        mat.uniforms.uFoamC.value.copy(this._foamC);
+        // Capped. Above 1 the foam mix saturates and the water stops being a
+        // colour at all, which costs exactly the per-song identity the rest of
+        // this file works to establish.
+        mat.uniforms.uFoamAmt.value = Math.min(1.05, 0.42 + mm.roughness * 0.6 + perf.intensity * 0.28);
+        // Glassy water scatters more, but at 0.55+0.7 the glassiest records
+        // reached 1.12 and blew out hardest — the calmest songs were the
+        // brightest, which is backwards.
+        mat.uniforms.uSSS.value = 0.30 + mm.glassiness * 0.40;
+      }
     }
 
     // ---- voice -------------------------------------------------------------
+    // Without this block the shader's uVoicePresence, uVoicePitch, uEffort,
+    // uVibrato and uGrit all sit at zero forever, and voiceSource() returns on
+    // its first line every time — so the singer never touches the water at all.
+    // That is exactly what had happened here: the wiring was lost when this
+    // build's ancestor was forked, and the whole vocal channel has been dead
+    // ever since while every layer above it went on computing weights for it.
     const v = music.voice;
     if (v) {
       U.uVoicePresence.value += (v.presence - U.uVoicePresence.value) * (1 - Math.exp(-dt * 7));
@@ -273,8 +392,6 @@ export class WaterArena {
       U.uVoicePitch.value += (v.pitch - U.uVoicePitch.value) * (1 - Math.exp(-dt * 9));
       U.uEffort.value += (v.effort - U.uEffort.value) * (1 - Math.exp(-dt * 5));
       U.uVibrato.value += (v.vibrato - U.uVibrato.value) * (1 - Math.exp(-dt * 4));
-      U.uVoicePhrase.value += (v.phrase - U.uVoicePhrase.value) * (1 - Math.exp(-dt * 5));
-      U.uVoiceOnset.value = Math.max(U.uVoiceOnset.value * Math.exp(-dt * 3.2), v.onset ? 1 : 0);
       U.uGrit.value += ((v.grit || 0) - U.uGrit.value) * (1 - Math.exp(-dt * 3));
     }
 
@@ -300,6 +417,10 @@ export class WaterArena {
     this.mistMat.uniforms.uSpray.value = perf.spray;
 
     this.backdropMat.uniforms.uTime.value = U.uTime.value;
+    // caustics strengthen as the water gets busier, and vanish when it is still
+    this.causticMat.uniforms.uCausticAmt.value = 0.16 + perf.intensity * 0.42;
+    this.causticMat.uniforms.uFloorY.value = -6.0 - perf.height * 1.1;
+
     this.backdropMat.uniforms.uGlowStrength.value = 0.14 + perf.intensity * 0.30 + perf.eruption * 0.25;
   }
 
@@ -320,10 +441,11 @@ export class WaterArena {
     this.lines.geometry.dispose();
     this.mist.geometry.dispose();
     this.backdrop.geometry.dispose();
-    [this.bodyMat, this.bodyReflMat, this.lineMat, this.lineReflMat, this.mistMat, this.backdropMat]
+    this.caustics.geometry.dispose();
+    [this.bodyMat, this.bodyReflMat, this.lineMat, this.lineReflMat, this.mistMat,
+      this.backdropMat, this.causticMat]
       .forEach(m => m.dispose());
     this.spectrumTex.dispose();
-    this.chromaTex.dispose();
   }
 }
 
